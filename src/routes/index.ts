@@ -1,1 +1,0 @@
-export {authRoutes as default} from './Auth/authRoutes';

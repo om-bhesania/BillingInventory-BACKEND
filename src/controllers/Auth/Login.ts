@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import { Response } from "express";
 import jwt from "jsonwebtoken";
-import { prisma } from "../../app";
-
+import { prisma } from "../../config/client";
+ 
 const generateToken = (user: any, secret: string, expiresIn: string) => {
   const payload = {
     id: user.id,

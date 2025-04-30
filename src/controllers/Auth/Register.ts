@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
-import bcrypt from "bcryptjs";
-import { prisma } from "../../app";
-import { sanitizeString } from "../../utils/helpers";
+import bcrypt from "bcryptjs";  
+import { prisma } from "../../config/client";
 
 const register = async (req: Request, res: Response) => {
   const { email, password, role, name, contact, roleId } = req.body || {};

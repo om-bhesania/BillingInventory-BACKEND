@@ -16,5 +16,76 @@ model User {
   email    String? @unique
   contact  String?
   password String
+  Role     Role?   @relation(fields: [roleId], references: [id])
 }
 
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  users       User[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  action      String // e.g., "create", "read", "update", "delete"
+  resource    String // e.g., "inventory", "user", "orders"
+  description String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  role         Role       @relation(fields: [roleId], references: [id])
+  roleId       String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  permissionId String
+
+  @@unique([roleId, permissionId])
+}
+
+model Product {
+  id               String   @id @default(uuid())
+  sku              String   @unique
+  name             String
+  description      String?
+  category         String                       // Regular, Premium, Seasonal
+  packagingType    String?                      // Cup, Cone, Tub, Brick
+  quantityInLiters Float                        // Total content in liters
+  unitSize         Float                        // E.g., 1.0, 150.0
+  unitMeasurement  String                       // Liter, ml, scoop, tub, etc.
+  unitPrice        Float                        // Price per custom unit
+  totalStock       Int                          // Available units in stock
+  minStockLevel    Int?                         // Optional: for low-stock alerts
+  barcode          String?                      // Optional: POS/barcode scanning
+  imageUrl         String?                      // Optional product image
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+    // Relations
+  flavorId         String
+  flavor           Flavor   @relation(fields: [flavorId], references: [id])
+}
+
+model Flavor {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  imageUrl  String?   // optional image preview
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  products  Product[]
+}
+
+model RestockRequest {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  shopId      String   // if you want to link it to a specific shop
+  requestedQty Int     // Quantity the operator wants to restock
+  status      String   // e.g., 'Pending', 'Approved', 'Rejected'
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

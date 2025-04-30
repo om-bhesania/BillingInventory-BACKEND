@@ -2,23 +2,14 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express, { Application, NextFunction, Request, Response } from "express";
 
-import routes from "./routes";
-import { errorHandler } from "./middlewares/ErrorHandlers/errorHandlers";
 import { PrismaClient } from "@prisma/client";
-
+import { errorHandler } from "./middlewares/ErrorHandlers/errorHandlers";
+import { authRoutes } from "./routes/Auth/authRoutes";
+import roleRoutes from "./routes/Roles/roleRoutes";
+ 
 // Load environment variables
 dotenv.config();
 
-// Initialize Prisma Client
-const prisma = new PrismaClient({
-  log: ["query", "info", "warn", "error"],
-});
-prisma.$connect().then(() => {
-  console.log("Connected to database");
-});
-
-// Export Prisma Client for use in other modules
-export { prisma };
 
 // Initialize app
 const app: Application = express();
@@ -34,8 +25,8 @@ app.get("/ping", (req: Request, res: Response) => {
 });
 
 // Routes
-app.use("/api", routes);
-
+app.use("/api/auth", authRoutes);
+app.use("/api/roles", roleRoutes);
 // Global Error Handler
 app.use(errorHandler);
 
