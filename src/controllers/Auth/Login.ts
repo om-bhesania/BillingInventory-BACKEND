@@ -3,7 +3,7 @@ import { Response } from "express";
 import jwt from "jsonwebtoken";
 import { prisma } from "../../config/client";
  
-const generateToken = (user: any, secret: string, expiresIn: string) => {
+const generateToken = (user: any, secret: string,  expiresIn: string) => {
   const payload = {
     id: user.id,
     name: user.name,
