@@ -45,47 +45,59 @@ model RolePermission {
   @@unique([roleId, permissionId])
 }
 
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+}
+
 model Product {
-  id               String   @id @default(uuid())
-  sku              String   @unique
+  id               String           @id @default(uuid())
+  sku              String           @unique
   name             String
   description      String?
-  category         String                       // Regular, Premium, Seasonal
-  packagingType    String?                      // Cup, Cone, Tub, Brick
-  quantityInLiters Float                        // Total content in liters
-  unitSize         Float                        // E.g., 1.0, 150.0
-  unitMeasurement  String                       // Liter, ml, scoop, tub, etc.
-  unitPrice        Float                        // Price per custom unit
-  totalStock       Int                          // Available units in stock
-  minStockLevel    Int?                         // Optional: for low-stock alerts
-  barcode          String?                      // Optional: POS/barcode scanning
-  imageUrl         String?                      // Optional product image
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-    // Relations
+  categoryId       String
+  category         Category         @relation(fields: [categoryId], references: [id])
+  packagingType    String? // Cup, Cone, Tub, Brick
+  quantityInLiters Float // Total content in liters
+  unitSize         Float // E.g., 1.0, 150.0
+  unitMeasurement  String // Liter, ml, scoop, tub, etc.
+  unitPrice        Float // Price per custom unit
+  totalStock       Int // Available units in stock
+  minStockLevel    Int? // Optional: for low-stock alerts
+  barcode          String? // Optional: POS/barcode scanning
+  imageUrl         String? // Optional product image
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  // Relations
   flavorId         String
-  flavor           Flavor   @relation(fields: [flavorId], references: [id])
+  flavor           Flavor           @relation(fields: [flavorId], references: [id])
+  RestockRequest   RestockRequest[]
 }
 
 model Flavor {
-  id        String    @id @default(uuid())
-  name      String    @unique
-  imageUrl  String?   // optional image preview
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        String   @id @default(uuid())
+  name      String   @unique
+  imageUrl  String? // optional image preview
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  products  Product[]
+  products Product[]
 }
 
 model RestockRequest {
-  id          String   @id @default(uuid())
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id])
-  shopId      String   // if you want to link it to a specific shop
-  requestedQty Int     // Quantity the operator wants to restock
-  status      String   // e.g., 'Pending', 'Approved', 'Rejected'
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id])
+  shopId       String // if you want to link it to a specific shop
+  requestedQty Int // Quantity the operator wants to restock
+  status       String // e.g., 'Pending', 'Approved', 'Rejected'
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

@@ -6,7 +6,8 @@ import { PrismaClient } from "@prisma/client";
 import { errorHandler } from "./middlewares/ErrorHandlers/errorHandlers";
 import { authRoutes } from "./routes/Auth/authRoutes";
 import roleRoutes from "./routes/Roles/roleRoutes";
- 
+import categoryRoutes from "./routes/categoryRoutes";
+
 // Load environment variables
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.get("/ping", (req: Request, res: Response) => {
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/roles", roleRoutes);
+app.use("/api/categories", categoryRoutes);
 // Global Error Handler
 app.use(errorHandler);
 
