@@ -21,6 +21,7 @@
     "nodemon": "^3.1.10",
     "prisma": "^6.7.0",
     "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "zod": "^3.24.3"
   },
   "devDependencies": {
@@ -29,6 +30,8 @@
     "@types/express": "^5.0.1",
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.15.3",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.3"
   }
