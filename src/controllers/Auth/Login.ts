@@ -15,7 +15,7 @@ const generateToken = (user: any, secret: string,  expiresIn: string) => {
   return jwt.sign(payload, secret);
 };
 
-const login = async (req: any, res: Response) => {
+export const login = async (req: any, res: Response) => {
   const { email, password } = req.body;
   console.log("first", email, password);
   if (!email) {
@@ -78,7 +78,7 @@ const login = async (req: any, res: Response) => {
   }
 };
 
-const logout = async (req: any, res: Response) => {
+export const logout = async (req: any, res: Response) => {
   const refreshToken = req.body.refreshToken;
 
   if (!refreshToken) {
@@ -112,7 +112,6 @@ const logout = async (req: any, res: Response) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
-
-export { login, logout };
+ 
 
 

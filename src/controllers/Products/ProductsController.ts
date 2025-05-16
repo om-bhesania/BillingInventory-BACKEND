@@ -315,11 +315,17 @@ export const hardDeleteProduct = async (req: Request, res: Response) => {
     }
 
     // Hard delete - remove from database
+    const product = await prisma.product.findUnique({ where: { id } });
     await prisma.product.delete({
       where: { id },
     });
 
-    res.json({ message: "Product permanently deleted" });
+    const productCount = await prisma.product.count();
+
+    res.json({
+      message: `${product?.name} has been successfully deleted`,
+      count: productCount,
+    });
   } catch (error) {
     console.error("Error deleting product:", error);
     res.status(500).json({ error: "Failed to delete product" });

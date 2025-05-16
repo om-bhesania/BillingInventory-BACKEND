@@ -226,7 +226,10 @@ productRoutes.delete("/:id", deleteProduct as RequestHandler);
  *     tags:
  *       - Products
  */
-productRoutes.delete("/:id/permanent", hardDeleteProduct as RequestHandler);
+// Add a leading slash here 👇
+productRoutes.delete(
+  "/delete/:id/permanent",
+  hardDeleteProduct as RequestHandler
+);
 
 export default productRoutes;
-

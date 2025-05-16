@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
-import bcrypt from "bcryptjs";  
+import bcrypt from "bcryptjs";
 import { prisma } from "../../config/client";
 
-const register = async (req: Request, res: Response) => {
+export const register = async (req: Request, res: Response) => {
   const { email, password, role, name, contact, roleId } = req.body || {};
   console.log({
     email,
@@ -49,5 +49,3 @@ const register = async (req: Request, res: Response) => {
     res.status(400).json({ message: "Email already exists" });
   }
 };
-
-export { register };
