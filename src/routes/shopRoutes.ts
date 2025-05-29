@@ -145,7 +145,7 @@ const shopRoutes = express.Router();
  *       500:
  *         description: Server error
  */
-shopRoutes.post("/", createShop);
+shopRoutes.post("/add-shop", createShop);
 
 /**
  * @swagger
@@ -165,7 +165,7 @@ shopRoutes.post("/", createShop);
  *       500:
  *         description: Server error
  */
-shopRoutes.get("/", getAllShops);
+shopRoutes.get("/get-all-shops", getAllShops);
 
 /**
  * @swagger
