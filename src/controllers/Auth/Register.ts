@@ -49,3 +49,47 @@ export const register = async (req: Request, res: Response) => {
     res.status(400).json({ message: "Email already exists" });
   }
 };
+
+export const getAllUsers = async (req: Request, res: Response) => {
+  try {
+    const users = await prisma.user.findMany();
+    console.log("users", users);
+    res.status(200).json(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch users" });
+  }
+};
+
+export const getUserById = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: Number(id) },
+    });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json(user);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch user" });
+  }
+};
+
+export const deleteUserById = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const user = await prisma.user.delete({
+      where: { id: Number(id) },
+    });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json({ message: "User deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to delete user" });
+  }
+};
+

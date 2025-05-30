@@ -16,6 +16,7 @@ model User {
   email    String? @unique
   contact  String?
   password String
+  isActive Boolean?
   Role     Role?   @relation(fields: [roleId], references: [id])
 }
 

@@ -13,6 +13,8 @@ import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpecs from "./swaggerConfig";
 import shopRoutes from "./routes/shopRoutes";
+import shopInventoryRoutes from "./routes/ShopInventoryRoutes";
+import PermissionsAndRoleRoutes from "./routes/PermissionRoutes";
 
 // Load environment variables
 dotenv.config();
@@ -41,6 +43,9 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/flavours", flavourRoutes); 
 app.use("/api/shop", shopRoutes); 
+app.use("/api/shopInventory", shopInventoryRoutes); 
+app.use("/api/permissions", PermissionsAndRoleRoutes); 
+
 // Global Error Handler
 app.use(errorHandler);
 
