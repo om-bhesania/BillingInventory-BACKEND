@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import { fetchUserId } from "../middlewares/AuthMiddleware";
 
 const prisma = new PrismaClient();
 
@@ -26,9 +27,25 @@ export const createShop = async (req: Request, res: Response): Promise<any> => {
       return res.status(400).json({ error: "Shop name is required" });
     }
 
+    if (!managerName) {
+      return res.status(400).json({ error: "Manager name is required" });
+    }
+
+    const existingShop = await prisma.shop.findUnique({
+      where: { id: name },
+    });
+
+    if (existingShop) {
+      return res
+        .status(409)
+        .json({ error: "Shop with same name already exists" });
+    }
+
+    const userId = fetchUserId();
     const shop = await prisma.shop.create({
       data: {
         name,
+        createdBy: userId,
         location,
         address,
         contactNumber,
@@ -40,6 +57,33 @@ export const createShop = async (req: Request, res: Response): Promise<any> => {
         maxCapacity: maxCapacity ? parseInt(maxCapacity.toString()) : null,
         description,
         logoUrl,
+      },
+    });
+
+    // Find the user by managerName
+    const user = await prisma.user.findUnique({
+      where: {
+        id: managerName,
+      },
+    });
+
+    if (!user) {
+      await prisma.shop.delete({
+        where: {
+          id: shop.id,
+        },
+      });
+      return res.status(404).json({ error: "Manager not found" });
+    }
+
+    // Update the user's shopId with the newly created shop's ID
+    await prisma.user.update({
+      where: {
+        id: managerName,
+      },
+      data: {
+        shopId: shop.id,
+        shopName: shop.name,
       },
     });
 

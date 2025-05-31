@@ -11,6 +11,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@prisma/client": "^6.8.2",
+    "async_hooks": "^1.0.0",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
@@ -21,6 +22,7 @@
     "nodemon": "^3.1.10",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
+    "uuid": "^11.1.0",
     "zod": "^3.24.3"
   },
   "devDependencies": {

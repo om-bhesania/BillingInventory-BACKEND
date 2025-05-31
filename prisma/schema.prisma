@@ -9,15 +9,20 @@ datasource db {
 }
 
 model User {
-  id       Int     @id @default(autoincrement())
-  name     String?
-  role     String?
-  roleId   String?
-  email    String? @unique
-  contact  String?
-  password String
-  isActive Boolean?
-  Role     Role?   @relation(fields: [roleId], references: [id])
+  id        String     @id
+  name      String?
+  role      String?
+  roleId    String?
+  email     String? @unique
+  contact   String?
+  password  String
+  isActive  Boolean?
+  shopName  String?
+  shopId    String?
+  Role      Role?   @relation(fields: [roleId], references: [id])
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  createdBy         String?
 }
 
 model Role {
@@ -53,6 +58,7 @@ model Category {
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  createdBy         String?
   products    Product[]
 }
 
@@ -73,13 +79,14 @@ model Product {
   barcode          String? // Optional: POS/barcode scanning
   imageUrl         String? // Optional product image
   isActive         Boolean          @default(true)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
   // Relations
   flavorId         String
   shopInventory    ShopInventory[]
   flavor           Flavor           @relation(fields: [flavorId], references: [id])
   RestockRequest   RestockRequest[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  createdBy         String?
 }
 
 model Flavor {
@@ -89,7 +96,7 @@ model Flavor {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
+  createdBy String?
   products Product[]
 }
 
@@ -103,6 +110,7 @@ model RestockRequest {
   shop         Shop     @relation(fields: [shopId], references: [id])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  createdBy    String?
 }
 
 model Shop {
@@ -121,7 +129,7 @@ model Shop {
   logoUrl           String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
-  
+  createdBy         String?  
   // Relations
   restockRequests   RestockRequest[]
   inventory         ShopInventory[]
@@ -135,8 +143,9 @@ model ShopInventory {
   product          Product  @relation(fields: [productId], references: [id])
   currentStock     Int      // Current quantity in this specific shop
   lastRestockDate  DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  createdBy        String?
 
   @@unique([shopId, productId])
 }

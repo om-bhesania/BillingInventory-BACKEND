@@ -10,6 +10,8 @@ import {
   updateProduct,
   updateProductStock,
 } from "../controllers/Products/ProductsController";
+import { authMiddleware } from "../middlewares/AuthMiddleware";
+import { userDataFilter } from "../middlewares/filterDataHanlder";
 
 const productRoutes = express.Router();
 
@@ -34,8 +36,13 @@ const productRoutes = express.Router();
  *         description: Filter by active status
  *     tags:
  *       - Products
- */
-productRoutes.get("/get-products", getProducts as RequestHandler);
+ */ 
+productRoutes.get(
+  "/get-products",
+  authMiddleware, // ✅ Middleware first
+  userDataFilter,
+  getProducts as RequestHandler
+);
 
 /**
  * @swagger
@@ -52,7 +59,7 @@ productRoutes.get("/get-products", getProducts as RequestHandler);
  *     tags:
  *       - Products
  */
-productRoutes.get("/:id", getProductById as RequestHandler);
+productRoutes.get("/:id", authMiddleware, getProductById as RequestHandler);
 
 /**
  * @swagger
@@ -69,7 +76,7 @@ productRoutes.get("/:id", getProductById as RequestHandler);
  *     tags:
  *       - Products
  */
-productRoutes.get("/sku/:sku", getProductBySku as RequestHandler);
+productRoutes.get("/sku/:sku", authMiddleware, getProductBySku as RequestHandler);
 
 /**
  * @swagger
@@ -79,7 +86,7 @@ productRoutes.get("/sku/:sku", getProductBySku as RequestHandler);
  *     tags:
  *       - Products
  */
-productRoutes.get("/low-stock", getLowStockProducts as RequestHandler);
+productRoutes.get("/low-stock", authMiddleware, getLowStockProducts as RequestHandler);
 
 // Protected routes that require authentication
 
@@ -138,7 +145,7 @@ productRoutes.get("/low-stock", getLowStockProducts as RequestHandler);
  *     tags:
  *       - Products
  */
-productRoutes.post("/add-products", createProduct as RequestHandler);
+productRoutes.post("/add-products", authMiddleware, createProduct as RequestHandler);
 
 /**
  * @swagger
@@ -157,7 +164,7 @@ productRoutes.post("/add-products", createProduct as RequestHandler);
  *     tags:
  *       - Products
  */
-productRoutes.put("/:id", updateProduct as RequestHandler);
+productRoutes.put("/:id", authMiddleware, updateProduct as RequestHandler);
 
 /**
  * @swagger
@@ -188,7 +195,7 @@ productRoutes.put("/:id", updateProduct as RequestHandler);
  *     tags:
  *       - Products
  */
-productRoutes.patch("/:id/stock", updateProductStock as RequestHandler);
+productRoutes.patch("/:id/stock", authMiddleware, updateProductStock as RequestHandler);
 
 /**
  * @swagger
@@ -207,7 +214,7 @@ productRoutes.patch("/:id/stock", updateProductStock as RequestHandler);
  *     tags:
  *       - Products
  */
-productRoutes.delete("/:id", deleteProduct as RequestHandler);
+productRoutes.delete("/:id", authMiddleware, deleteProduct as RequestHandler);
 
 /**
  * @swagger
@@ -229,7 +236,9 @@ productRoutes.delete("/:id", deleteProduct as RequestHandler);
 // Add a leading slash here 👇
 productRoutes.delete(
   "/delete/:id/permanent",
+  authMiddleware, // ✅ Middleware first
   hardDeleteProduct as RequestHandler
 );
 
 export default productRoutes;
+

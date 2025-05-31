@@ -1,14 +1,16 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/client";
+import { fetchUserId } from "../middlewares/AuthMiddleware";
 
 export const createFlavor = async (req: Request, res: Response) => {
   try {
     const { name, imageUrl } = req.body;
-
+    const userId = fetchUserId();
     const flavor = await prisma.flavor.create({
       data: {
         name: name,
         imageUrl: imageUrl,
+        createdBy: userId,
       },
     });
 

@@ -9,9 +9,9 @@ import {
   getAllRoles,
   bulkCheckPermissions,
 } from "../controllers/PermissionController";
+import { userDataFilter } from "../middlewares/filterDataHanlder";
 
 const PermissionsAndRoleRoutes = Router();
-
 // ===============================
 // PERMISSION ROUTES WITH SWAGGER
 // ===============================

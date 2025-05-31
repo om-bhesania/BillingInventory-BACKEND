@@ -11,9 +11,10 @@ import {
   getLowStockItems,
   getInventoryStats,
 } from "../controllers/ShopInventoryControl";
+import { authMiddleware } from "../middlewares/AuthMiddleware";
+import { userDataFilter } from "../middlewares/filterDataHanlder";
 
 const shopInventoryRoutes = Router();
-
 /**
  * @swagger
  * components:
@@ -235,7 +236,7 @@ const shopInventoryRoutes = Router();
  *       500:
  *         description: Internal server error
  */
-shopInventoryRoutes.post("/", createShopInventory);
+shopInventoryRoutes.post("/", authMiddleware, createShopInventory);
 
 /**
  * @swagger
@@ -275,7 +276,12 @@ shopInventoryRoutes.post("/", createShopInventory);
  *       500:
  *         description: Internal server error
  */
-shopInventoryRoutes.get("/", getAllShopInventory);
+shopInventoryRoutes.get(
+  "/",
+  userDataFilter,
+  authMiddleware,
+  getAllShopInventory
+);
 
 /**
  * @swagger
@@ -301,7 +307,12 @@ shopInventoryRoutes.get("/", getAllShopInventory);
  *       500:
  *         description: Internal server error
  */
-shopInventoryRoutes.get("/stats", getInventoryStats);
+shopInventoryRoutes.get(
+  "/stats",
+  authMiddleware,
+  userDataFilter,
+  getInventoryStats
+);
 
 /**
  * @swagger
@@ -345,7 +356,12 @@ shopInventoryRoutes.get("/stats", getInventoryStats);
  *       500:
  *         description: Internal server error
  */
-shopInventoryRoutes.get("/low-stock", getLowStockItems);
+shopInventoryRoutes.get(
+  "/low-stock",
+  authMiddleware,
+  userDataFilter,
+  getLowStockItems
+);
 
 /**
  * @swagger
@@ -413,7 +429,12 @@ shopInventoryRoutes.get("/low-stock", getLowStockItems);
  *       500:
  *         description: Internal server error
  */
-shopInventoryRoutes.get("/shop/:shopId", getShopInventoryByShopId);
+shopInventoryRoutes.get(
+  "/shop/:shopId",
+  authMiddleware,
+  userDataFilter,
+  getShopInventoryByShopId
+);
 
 /**
  * @swagger
@@ -461,7 +482,11 @@ shopInventoryRoutes.get("/shop/:shopId", getShopInventoryByShopId);
  *       500:
  *         description: Internal server error
  */
-shopInventoryRoutes.put("/shop/:shopId/bulk-update", bulkUpdateShopInventory);
+shopInventoryRoutes.put(
+  "/shop/:shopId/bulk-update",
+  authMiddleware,
+  bulkUpdateShopInventory
+);
 
 /**
  * @swagger
@@ -490,7 +515,7 @@ shopInventoryRoutes.put("/shop/:shopId/bulk-update", bulkUpdateShopInventory);
  *       500:
  *         description: Internal server error
  */
-shopInventoryRoutes.get("/:id", getShopInventoryById);
+shopInventoryRoutes.get("/:id", authMiddleware, getShopInventoryById);
 
 /**
  * @swagger
@@ -540,7 +565,7 @@ shopInventoryRoutes.get("/:id", getShopInventoryById);
  *       500:
  *         description: Internal server error
  */
-shopInventoryRoutes.put("/:id", updateShopInventory);
+shopInventoryRoutes.put("/:id", authMiddleware, updateShopInventory);
 
 /**
  * @swagger
@@ -582,7 +607,7 @@ shopInventoryRoutes.put("/:id", updateShopInventory);
  *       500:
  *         description: Internal server error
  */
-shopInventoryRoutes.delete("/:id", deleteShopInventory);
+shopInventoryRoutes.delete("/:id", authMiddleware, deleteShopInventory);
 
 /**
  * @swagger
@@ -634,6 +659,7 @@ shopInventoryRoutes.delete("/:id", deleteShopInventory);
  *       500:
  *         description: Internal server error
  */
-shopInventoryRoutes.patch("/:id/update-stock", updateStock);
+shopInventoryRoutes.patch("/:id/update-stock",authMiddleware, updateStock);
 
 export default shopInventoryRoutes;
+

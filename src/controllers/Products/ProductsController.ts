@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/client";
+import { fetchUserId } from "../../middlewares/AuthMiddleware";
 export const createProduct = async (req: Request, res: Response) => {
   try {
     const {
@@ -44,6 +45,8 @@ export const createProduct = async (req: Request, res: Response) => {
     if (existingSku) {
       return res.status(400).json({ error: "SKU already exists" });
     }
+    const userId = fetchUserId()
+    console.log('userId:', userId);
 
     const product = await prisma.product.create({
       data: {
@@ -61,6 +64,7 @@ export const createProduct = async (req: Request, res: Response) => {
         barcode,
         imageUrl,
         flavorId,
+        createdBy: userId,
       },
       include: {
         category: true,

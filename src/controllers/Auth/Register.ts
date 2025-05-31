@@ -1,17 +1,11 @@
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import { prisma } from "../../config/client";
-
+import { Prisma } from "@prisma/client";
+import { v4 as uuidv4 } from "uuid";
+import { fetchUserId } from "../../middlewares/AuthMiddleware";
 export const register = async (req: Request, res: Response) => {
-  const { email, password, role, name, contact, roleId } = req.body || {};
-  console.log({
-    email,
-    password,
-    role,
-    name,
-    contact,
-    roleId,
-  });
+  const { email, password, role, name, contact, roleId, id } = req.body || {};
   if (!email) {
     return res.status(400).json({ message: "Email is required" });
   }
@@ -32,28 +26,42 @@ export const register = async (req: Request, res: Response) => {
   }
 
   try {
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+    if (existingUser) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
+    const v4 = uuidv4();
+    const userId = fetchUserId();
     const user = await prisma.user.create({
       data: {
+        id: v4, // Make sure req.body.id is provided and valid
         name: name,
         email: email,
         password: await bcrypt.hash(password, 10),
         contact: contact,
         role: role,
         roleId: roleId,
+        createdBy: userId,
       },
     });
     console.log("user", user);
     res.status(201).json(user);
   } catch (error) {
     console.error(error);
-    res.status(400).json({ message: "Email already exists" });
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        return res.status(400).json({ message: "Email already exists" });
+      }
+    }
+    res.status(500).json({ message: "Failed to create user" });
   }
 };
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
     const users = await prisma.user.findMany();
-    console.log("users", users);
     res.status(200).json(users);
   } catch (error) {
     console.error(error);
@@ -65,7 +73,7 @@ export const getUserById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const user = await prisma.user.findUnique({
-      where: { id: Number(id) },
+      where: { id: id },
     });
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -81,7 +89,7 @@ export const deleteUserById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const user = await prisma.user.delete({
-      where: { id: Number(id) },
+      where: { id: id },
     });
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -92,4 +100,3 @@ export const deleteUserById = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Failed to delete user" });
   }
 };
-

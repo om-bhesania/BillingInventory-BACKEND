@@ -7,6 +7,8 @@ import {
   getShopById,
   updateShop,
 } from "../controllers/shopControllers";
+import { authMiddleware } from "../middlewares/AuthMiddleware";
+import { userDataFilter } from "../middlewares/filterDataHanlder";
 
 const shopRoutes = express.Router();
 
@@ -145,7 +147,7 @@ const shopRoutes = express.Router();
  *       500:
  *         description: Server error
  */
-shopRoutes.post("/add-shop", createShop);
+shopRoutes.post("/add-shop", authMiddleware, createShop);
 
 /**
  * @swagger
@@ -165,7 +167,7 @@ shopRoutes.post("/add-shop", createShop);
  *       500:
  *         description: Server error
  */
-shopRoutes.get("/get-all-shops", getAllShops);
+shopRoutes.get("/get-all-shops", authMiddleware,userDataFilter, getAllShops);
 
 /**
  * @swagger
@@ -192,7 +194,7 @@ shopRoutes.get("/get-all-shops", getAllShops);
  *       500:
  *         description: Server error
  */
-shopRoutes.get("/:id", getShopById);
+shopRoutes.get("/:id", authMiddleware, userDataFilter, getShopById);
 
 /**
  * @swagger
@@ -251,7 +253,7 @@ shopRoutes.get("/:id", getShopById);
  *       500:
  *         description: Server error
  */
-shopRoutes.put("/:id", updateShop);
+shopRoutes.put("/:id", authMiddleware, updateShop);
 
 /**
  * @swagger
@@ -274,6 +276,6 @@ shopRoutes.put("/:id", updateShop);
  *       500:
  *         description: Server error
  */
-shopRoutes.delete("/:id", deleteShop);
+shopRoutes.delete("/:id", authMiddleware, deleteShop);
 
 export default shopRoutes;

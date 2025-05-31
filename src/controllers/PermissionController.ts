@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
-
+import jwt from "jsonwebtoken";
 const prisma = new PrismaClient();
 
 // Define the permission structure
@@ -72,18 +72,73 @@ export const DEFAULT_PERMISSIONS: PermissionStructure = {
 // ===============================
 
 // Get all permissions structure
+
 export const getPermissionStructure = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
+    // Extract token from Authorization header
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        error: "Authorization token required",
+      });
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // Decode JWT token to get user info
+    let decodedToken: any;
+    try {
+      decodedToken = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    } catch (jwtError) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid or expired token",
+      });
+    }
+
+    const userId = decodedToken.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User ID not found in token",
+      });
+    }
+
+    // Fetch user details from database
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      data: DEFAULT_PERMISSIONS,
+      data: {
+        permissions: DEFAULT_PERMISSIONS,
+        user: {
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
+      },
     });
   } catch (error) {
     console.error("Error fetching permission structure:", error);
-    return res.status(500).json({ error: "Failed to fetch permissions" });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch permissions",
+    });
   }
 };
 

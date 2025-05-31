@@ -1,13 +1,16 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/client';
+import { fetchUserId } from '../middlewares/AuthMiddleware';
 
 export const createCategory = async (req: Request, res: Response) => {
     try {
         const { name, description } = req.body;
+        const userId = fetchUserId();
         const category = await prisma.category.create({
             data: {
                 name,
                 description,
+                createdBy: userId,
             },
         });
         res.status(201).json(category);

@@ -7,10 +7,11 @@ import {
   deleteFlavor,
   hardDeleteFlavor,
   getFlavorProductStats,
-} from "../controllers/flavourController";
+} from "../controllers/flavourController"; 
+import { authMiddleware } from "../middlewares/AuthMiddleware";
+import { userDataFilter } from "../middlewares/filterDataHanlder";
 
-const flavourRoutes = express.Router();
-
+const flavourRoutes = express.Router(); 
 /**
  * @swagger
  * tags:
@@ -33,7 +34,12 @@ const flavourRoutes = express.Router();
  *     tags:
  *       - Flavours
  */
-flavourRoutes.get("/", getFlavors as RequestHandler);
+flavourRoutes.get(
+  "/",
+  authMiddleware,
+  userDataFilter,
+  getFlavors as RequestHandler
+);
 
 /**
  * @swagger
@@ -50,7 +56,12 @@ flavourRoutes.get("/", getFlavors as RequestHandler);
  *     tags:
  *       - Flavours
  */
-flavourRoutes.get("/:id", getFlavorById as RequestHandler);
+flavourRoutes.get(
+  "/:id",
+  authMiddleware,
+  userDataFilter,
+  getFlavorById as RequestHandler
+);
 
 /**
  * @swagger
@@ -60,7 +71,12 @@ flavourRoutes.get("/:id", getFlavorById as RequestHandler);
  *     tags:
  *       - Flavours
  */
-flavourRoutes.get("/stats", getFlavorProductStats as RequestHandler);
+flavourRoutes.get(
+  "/stats",
+  authMiddleware,
+  userDataFilter,
+  getFlavorProductStats as RequestHandler
+);
 
 /**
  * @swagger
@@ -85,7 +101,7 @@ flavourRoutes.get("/stats", getFlavorProductStats as RequestHandler);
  *     tags:
  *       - Flavours
  */
-flavourRoutes.post("/", createFlavor as RequestHandler);
+flavourRoutes.post("/", authMiddleware, createFlavor as RequestHandler);
 
 /**
  * @swagger
@@ -104,7 +120,7 @@ flavourRoutes.post("/", createFlavor as RequestHandler);
  *     tags:
  *       - Flavours
  */
-flavourRoutes.put("/:id", updateFlavor as RequestHandler);
+flavourRoutes.put("/:id", authMiddleware, updateFlavor as RequestHandler);
 
 /**
  * @swagger
@@ -123,7 +139,7 @@ flavourRoutes.put("/:id", updateFlavor as RequestHandler);
  *     tags:
  *       - Flavours
  */
-flavourRoutes.delete("/:id", deleteFlavor as RequestHandler);
+flavourRoutes.delete("/:id", authMiddleware, deleteFlavor as RequestHandler);
 
 /**
  * @swagger
@@ -142,7 +158,7 @@ flavourRoutes.delete("/:id", deleteFlavor as RequestHandler);
  *     tags:
  *       - Flavours
  */
-flavourRoutes.delete("/:id/permanent", hardDeleteFlavor as RequestHandler);
+flavourRoutes.delete("/:id/permanent", authMiddleware, hardDeleteFlavor as RequestHandler);
 
 export default flavourRoutes;
 

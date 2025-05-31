@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
+import { fetchUserId } from "../middlewares/AuthMiddleware";
 
 const prisma = new PrismaClient();
 
@@ -9,12 +10,7 @@ export const createShopInventory = async (
   res: Response
 ): Promise<any> => {
   try {
-    const {
-      shopId,
-      productId,
-      currentStock,
-      lastRestockDate,
-    } = req.body;
+    const { shopId, productId, currentStock, lastRestockDate } = req.body;
 
     // Validate required fields
     if (!shopId) {
@@ -70,12 +66,14 @@ export const createShopInventory = async (
       });
     }
 
+    const userId = fetchUserId();
     const shopInventory = await prisma.shopInventory.create({
       data: {
         shopId,
         productId,
         currentStock: parseInt(currentStock.toString()),
         lastRestockDate: lastRestockDate ? new Date(lastRestockDate) : null,
+        createdBy: userId,
       },
       include: {
         shop: {
