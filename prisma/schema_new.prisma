@@ -62,7 +62,7 @@ model Shop {
 
 model User {
   id          Int      @id @default(autoincrement())
-  publicId    String   @unique
+  publicId    String   @unique @default(dbgenerated("encode(gen_random_bytes(8), 'hex')"))
   name        String?
   role        String?
   roleId      String?
@@ -70,6 +70,7 @@ model User {
   contact     String?
   password    String
   Role        Role?    @relation(fields: [roleId], references: [id])
+  // Shop ownership/management - one user can only own/manage one shop
   ownedShop   Shop?    @relation("ShopOwner")
   managedShop Shop?    @relation("ShopManager")
 }

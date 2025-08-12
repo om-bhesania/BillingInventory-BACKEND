@@ -1,39 +1,46 @@
 import express, { RequestHandler } from "express";
+import { authenticateToken } from "../middlewares/ErrorHandlers/checkAccess";
 import {
-  createProduct,
-  deleteProduct,
-  getLowStockProducts,
+  getProducts,
   getProductById,
   getProductBySku,
-  getProducts,
-  hardDeleteProduct,
+  createProduct,
   updateProduct,
-  updateProductStock,
+  deleteProduct,
 } from "../controllers/Products/ProductsController";
 
 const productRoutes = express.Router();
 
+// Apply authentication middleware to all product routes
+productRoutes.use(authenticateToken);
+
 /**
  * @swagger
  * tags:
- *   - name: Products
- *     description: API endpoints for managing products
+ *   name: Products
+ *   description: Product inventory management endpoints (token required)
  */
 
 /**
- * Products Routes
  * @swagger
- * /api/products:
+ * /api/products/get-products:
  *   get:
  *     summary: Get all products
+ *     description: Retrieve list of all products with category and flavour information
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: isActive
  *         schema:
  *           type: boolean
  *         description: Filter by active status
- *     tags:
- *       - Products
+ *     responses:
+ *       200:
+ *         description: List of products retrieved successfully
+ *       401:
+ *         description: Unauthorized
  */
 productRoutes.get("/get-products", getProducts as RequestHandler);
 
@@ -41,7 +48,11 @@ productRoutes.get("/get-products", getProducts as RequestHandler);
  * @swagger
  * /api/products/{id}:
  *   get:
- *     summary: Get a product by ID
+ *     summary: Get product by ID
+ *     description: Retrieve a specific product by its ID with category and flavour details
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -49,8 +60,13 @@ productRoutes.get("/get-products", getProducts as RequestHandler);
  *         schema:
  *           type: string
  *         description: Product ID
- *     tags:
- *       - Products
+ *     responses:
+ *       200:
+ *         description: Product retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Product not found
  */
 productRoutes.get("/:id", getProductById as RequestHandler);
 
@@ -58,7 +74,11 @@ productRoutes.get("/:id", getProductById as RequestHandler);
  * @swagger
  * /api/products/sku/{sku}:
  *   get:
- *     summary: Get a product by SKU
+ *     summary: Get product by SKU
+ *     description: Retrieve a specific product by its SKU with category and flavour details
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: sku
@@ -66,28 +86,25 @@ productRoutes.get("/:id", getProductById as RequestHandler);
  *         schema:
  *           type: string
  *         description: Product SKU
- *     tags:
- *       - Products
+ *     responses:
+ *       200:
+ *         description: Product retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Product not found
  */
 productRoutes.get("/sku/:sku", getProductBySku as RequestHandler);
-
-/**
- * @swagger
- * /api/products/low-stock:
- *   get:
- *     summary: Get products with stock below minimum level
- *     tags:
- *       - Products
- */
-productRoutes.get("/low-stock", getLowStockProducts as RequestHandler);
 
 // Protected routes that require authentication
 
 /**
  * @swagger
- * /api/products:
+ * /api/products/add-products:
  *   post:
  *     summary: Create a new product
+ *     description: Create a new product in the inventory (Admin only)
+ *     tags: [Products]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -109,61 +126,67 @@ productRoutes.get("/low-stock", getLowStockProducts as RequestHandler);
  *             properties:
  *               sku:
  *                 type: string
+ *                 description: Product SKU (unique identifier)
  *               name:
  *                 type: string
+ *                 description: Product name
  *               description:
  *                 type: string
+ *                 description: Product description
  *               categoryId:
  *                 type: string
+ *                 description: Category ID
  *               packagingType:
  *                 type: string
+ *                 description: Type of packaging
  *               quantityInLiters:
  *                 type: number
+ *                 description: Quantity in liters
  *               unitSize:
  *                 type: number
+ *                 description: Size of individual unit
  *               unitMeasurement:
  *                 type: string
+ *                 description: Unit of measurement
  *               unitPrice:
  *                 type: number
+ *                 description: Price per unit
  *               totalStock:
  *                 type: integer
+ *                 description: Total available stock
  *               minStockLevel:
  *                 type: integer
+ *                 description: Minimum stock level for alerts
  *               barcode:
  *                 type: string
+ *                 description: Product barcode
  *               imageUrl:
  *                 type: string
+ *                 description: URL to product image
  *               flavorId:
  *                 type: string
- *     tags:
- *       - Products
+ *                 description: Flavour ID
+ *     responses:
+ *       201:
+ *         description: Product created successfully
+ *       400:
+ *         description: Bad request - validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ *       409:
+ *         description: SKU already exists
  */
 productRoutes.post("/add-products", createProduct as RequestHandler);
 
 /**
  * @swagger
- * /api/products/update-product/{id}:
+ * /api/products/{id}:
  *   put:
- *     summary: Update a product
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Product ID
- *     tags:
- *       - Products
- */
-productRoutes.put("/:id", updateProduct as RequestHandler);
-
-/**
- * @swagger
- * /api/products/{id}/stock:
- *   patch:
- *     summary: Update product stock quantity
+ *     summary: Update product by ID
+ *     description: Update an existing product's details (Admin only)
+ *     tags: [Products]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -179,22 +202,73 @@ productRoutes.put("/:id", updateProduct as RequestHandler);
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - totalStock
  *             properties:
+ *               sku:
+ *                 type: string
+ *                 description: Product SKU
+ *               name:
+ *                 type: string
+ *                 description: Product name
+ *               description:
+ *                 type: string
+ *                 description: Product description
+ *               categoryId:
+ *                 type: string
+ *                 description: Category ID
+ *               packagingType:
+ *                 type: string
+ *                 description: Type of packaging
+ *               quantityInLiters:
+ *                 type: number
+ *                 description: Quantity in liters
+ *               unitSize:
+ *                 type: number
+ *                 description: Size of individual unit
+ *               unitMeasurement:
+ *                 type: string
+ *                 description: Unit of measurement
+ *               unitPrice:
+ *                 type: number
+ *                 description: Price per unit
  *               totalStock:
  *                 type: integer
- *                 minimum: 0
- *     tags:
- *       - Products
+ *                 description: Total available stock
+ *               minStockLevel:
+ *                 type: integer
+ *                 description: Minimum stock level for alerts
+ *               barcode:
+ *                 type: string
+ *                 description: Product barcode
+ *               imageUrl:
+ *                 type: string
+ *                 description: URL to product image
+ *               flavorId:
+ *                 type: string
+ *                 description: Flavour ID
+ *               isActive:
+ *                 type: boolean
+ *                 description: Whether the product is active
+ *     responses:
+ *       200:
+ *         description: Product updated successfully
+ *       400:
+ *         description: Bad request - validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ *       404:
+ *         description: Product not found
  */
-productRoutes.patch("/:id/stock", updateProductStock as RequestHandler);
+productRoutes.put("/:id", updateProduct as RequestHandler);
 
 /**
  * @swagger
  * /api/products/{id}:
  *   delete:
- *     summary: Deactivate a product (soft delete)
+ *     summary: Delete product by ID
+ *     description: Soft delete a product (Admin only)
+ *     tags: [Products]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -204,32 +278,16 @@ productRoutes.patch("/:id/stock", updateProductStock as RequestHandler);
  *         schema:
  *           type: string
  *         description: Product ID
- *     tags:
- *       - Products
+ *     responses:
+ *       200:
+ *         description: Product deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ *       404:
+ *         description: Product not found
  */
 productRoutes.delete("/:id", deleteProduct as RequestHandler);
-
-/**
- * @swagger
- * /api/products/{id}/permanent:
- *   delete:
- *     summary: Permanently delete a product
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Product ID
- *     tags:
- *       - Products
- */
-// Add a leading slash here 👇
-productRoutes.delete(
-  "/delete/:id/permanent",
-  hardDeleteProduct as RequestHandler
-);
 
 export default productRoutes;

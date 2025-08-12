@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/client";
+import { logger } from "../../utils/logger";
 export const createProduct = async (req: Request, res: Response) => {
   try {
     const {
@@ -68,9 +69,10 @@ export const createProduct = async (req: Request, res: Response) => {
       },
     });
 
+    logger.controller.create("Product", { name: product.name, sku: product.sku });
     res.status(201).json(product);
   } catch (error) {
-    console.error("Error creating product:", error);
+    logger.error("Error creating product:", error);
     if ((error as any).code === "P2002") {
       return res
         .status(400)
@@ -106,7 +108,7 @@ export const getProducts = async (req: Request, res: Response) => {
 
     res.json(products);
   } catch (error) {
-    console.error("Error fetching products:", error);
+    logger.error("Error fetching products:", error);
     res.status(500).json({ error: "Failed to fetch products" });
   }
 };
@@ -120,7 +122,7 @@ export const getProductById = async (req: Request, res: Response) => {
       include: {
         category: true,
         flavor: true,
-        RestockRequest: true,
+        restockRequests: true,
       },
     });
 
@@ -130,7 +132,7 @@ export const getProductById = async (req: Request, res: Response) => {
 
     res.json(product);
   } catch (error) {
-    console.error("Error fetching product:", error);
+    logger.error("Error fetching product:", error);
     res.status(500).json({ error: "Failed to fetch product" });
   }
 };
@@ -153,7 +155,7 @@ export const getProductBySku = async (req: Request, res: Response) => {
 
     res.json(product);
   } catch (error) {
-    console.error("Error fetching product by SKU:", error);
+    logger.error("Error fetching product by SKU:", error);
     res.status(500).json({ error: "Failed to fetch product by SKU" });
   }
 };
@@ -246,9 +248,10 @@ export const updateProduct = async (req: Request, res: Response) => {
       },
     });
 
+    logger.controller.update("Product", product.id, { name: product.name });
     res.json(product);
   } catch (error) {
-    console.error("Error updating product:", error);
+    logger.error("Error updating product:", error);
     if ((error as any).code === "P2002") {
       return res
         .status(400)
@@ -274,7 +277,7 @@ export const updateProductStock = async (req: Request, res: Response) => {
 
     res.json(product);
   } catch (error) {
-    console.error("Error updating product stock:", error);
+    logger.error("Error updating product stock:", error);
     res.status(500).json({ error: "Failed to update product stock" });
   }
 };
@@ -293,7 +296,7 @@ export const deleteProduct = async (req: Request, res: Response) => {
 
     res.json({ message: "Product deactivated successfully" });
   } catch (error) {
-    console.error("Error deactivating product:", error);
+    logger.error("Error deactivating product:", error);
     res.status(500).json({ error: "Failed to delete product" });
   }
 };
@@ -302,7 +305,7 @@ export const hardDeleteProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    // Check if there are any related RestockRequests
+    // Check if there are any related restock requests
     const relatedRequests = await prisma.restockRequest.findMany({
       where: { productId: id },
     });
@@ -327,7 +330,7 @@ export const hardDeleteProduct = async (req: Request, res: Response) => {
       count: productCount,
     });
   } catch (error) {
-    console.error("Error deleting product:", error);
+    logger.error("Error deleting product:", error);
     res.status(500).json({ error: "Failed to delete product" });
   }
 };
@@ -364,7 +367,7 @@ export const getProductsByFlavor = async (req: Request, res: Response) => {
       products,
     });
   } catch (error) {
-    console.error("Error fetching products by flavor:", error);
+    logger.error("Error fetching products by flavor:", error);
     res.status(500).json({ error: "Failed to fetch products by flavor" });
   }
 };
@@ -392,7 +395,7 @@ export const getLowStockProducts = async (req: Request, res: Response) => {
 
     res.json(lowStockProducts);
   } catch (error) {
-    console.error("Error fetching low stock products:", error);
+    logger.error("Error fetching low stock products:", error);
     res.status(500).json({ error: "Failed to fetch low stock products" });
   }
 };

@@ -1,20 +1,23 @@
-import express from "express";
-
+import express, { RequestHandler } from "express";
+import { authenticateToken } from "../middlewares/ErrorHandlers/checkAccess";
 import {
   createShop,
-  deleteShop,
   getAllShops,
   getShopById,
   updateShop,
+  deleteShop,
 } from "../controllers/shopControllers";
 
 const shopRoutes = express.Router();
+
+// Apply authentication middleware to all shop routes
+shopRoutes.use(authenticateToken);
 
 /**
  * @swagger
  * tags:
  *   name: Shops
- *   description: Shop management endpoints
+ *   description: Shop management endpoints (token required)
  */
 
 /**
@@ -98,7 +101,10 @@ const shopRoutes = express.Router();
  * /api/shops:
  *   post:
  *     summary: Create a new shop
+ *     description: Create a new shop with owner and manager assignments (Admin only)
  *     tags: [Shops]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -107,105 +113,110 @@ const shopRoutes = express.Router();
  *             type: object
  *             required:
  *               - name
+ *               - location
+ *               - address
+ *               - contactNumber
+ *               - email
+ *               - operatingHours
  *             properties:
  *               name:
  *                 type: string
+ *                 description: Shop name
  *               location:
  *                 type: string
+ *                 description: Shop location
  *               address:
  *                 type: string
+ *                 description: Shop address
  *               contactNumber:
  *                 type: string
+ *                 description: Shop contact number
  *               email:
  *                 type: string
+ *                 format: email
+ *                 description: Shop email
  *               operatingHours:
  *                 type: string
- *               isActive:
- *                 type: boolean
- *               openingDate:
- *                 type: string
- *                 format: date-time
- *               managerName:
- *                 type: string
- *               maxCapacity:
- *                 type: integer
+ *                 description: Shop operating hours
  *               description:
  *                 type: string
- *               logoUrl:
- *                 type: string
+ *                 description: Shop description
+ *               ownerId:
+ *                 type: integer
+ *                 description: ID of the shop owner
+ *               managerId:
+ *                 type: integer
+ *                 description: ID of the shop manager
  *     responses:
  *       201:
  *         description: Shop created successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Shop'
  *       400:
- *         description: Bad request - missing required fields
- *       500:
- *         description: Server error
+ *         description: Bad request - validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
  */
-shopRoutes.post("/add-shop", createShop);
+shopRoutes.post("/add-shop", createShop as RequestHandler);
 
 /**
  * @swagger
  * /api/shops:
  *   get:
  *     summary: Get all shops
+ *     description: Retrieve list of all shops with owner and manager information
  *     tags: [Shops]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: List of all shops
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Shop'
- *       500:
- *         description: Server error
+ *         description: List of shops retrieved successfully
+ *       401:
+ *         description: Unauthorized
  */
-shopRoutes.get("/get-all-shops", getAllShops);
+shopRoutes.get("/get-all-shops", getAllShops as RequestHandler);
 
 /**
  * @swagger
  * /api/shops/{id}:
  *   get:
- *     summary: Get a shop by ID
+ *     summary: Get shop by ID
+ *     description: Retrieve a specific shop by its ID with owner and manager details
  *     tags: [Shops]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
+ *         required: true
  *         schema:
  *           type: string
- *         required: true
  *         description: Shop ID
  *     responses:
  *       200:
- *         description: Shop details
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Shop'
+ *         description: Shop retrieved successfully
+ *       401:
+ *         description: Unauthorized
  *       404:
  *         description: Shop not found
- *       500:
- *         description: Server error
  */
-shopRoutes.get("/:id", getShopById);
+shopRoutes.get("/:id", getShopById as RequestHandler);
 
 /**
  * @swagger
  * /api/shops/{id}:
  *   put:
- *     summary: Update a shop
+ *     summary: Update shop by ID
+ *     description: Update an existing shop's details (Admin or Shop Owner only)
  *     tags: [Shops]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
+ *         required: true
  *         schema:
  *           type: string
- *         required: true
  *         description: Shop ID
  *     requestBody:
  *       required: true
@@ -216,64 +227,75 @@ shopRoutes.get("/:id", getShopById);
  *             properties:
  *               name:
  *                 type: string
+ *                 description: Shop name
  *               location:
  *                 type: string
+ *                 description: Shop location
  *               address:
  *                 type: string
+ *                 description: Shop address
  *               contactNumber:
  *                 type: string
+ *                 description: Shop contact number
  *               email:
  *                 type: string
+ *                 format: email
+ *                 description: Shop email
  *               operatingHours:
  *                 type: string
- *               isActive:
- *                 type: boolean
- *               openingDate:
- *                 type: string
- *                 format: date-time
- *               managerName:
- *                 type: string
- *               maxCapacity:
- *                 type: integer
+ *                 description: Shop operating hours
  *               description:
  *                 type: string
- *               logoUrl:
- *                 type: string
+ *                 description: Shop description
+ *               ownerId:
+ *                 type: integer
+ *                 description: ID of the shop owner
+ *               managerId:
+ *                 type: integer
+ *                 description: ID of the shop manager
+ *               isActive:
+ *                 type: boolean
+ *                 description: Whether the shop is active
  *     responses:
  *       200:
  *         description: Shop updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Shop'
+ *       400:
+ *         description: Bad request - validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Access denied
  *       404:
  *         description: Shop not found
- *       500:
- *         description: Server error
  */
-shopRoutes.put("/:id", updateShop);
+shopRoutes.put("/:id", updateShop as RequestHandler);
 
 /**
  * @swagger
  * /api/shops/{id}:
  *   delete:
- *     summary: Delete a shop
+ *     summary: Delete shop by ID
+ *     description: Delete a shop from the system (Admin only)
  *     tags: [Shops]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
+ *         required: true
  *         schema:
  *           type: string
- *         required: true
  *         description: Shop ID
  *     responses:
  *       200:
  *         description: Shop deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
  *       404:
  *         description: Shop not found
- *       500:
- *         description: Server error
  */
-shopRoutes.delete("/:id", deleteShop);
+shopRoutes.delete("/:id", deleteShop as RequestHandler);
 
 export default shopRoutes;
