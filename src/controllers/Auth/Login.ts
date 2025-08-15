@@ -191,6 +191,7 @@ export const listUsers = async (_req: any, res: Response) => {
         role: true,
         roleId: true,
         contact: true,
+        publicId: true,
         ownedShop: {
           select: {
             id: true,

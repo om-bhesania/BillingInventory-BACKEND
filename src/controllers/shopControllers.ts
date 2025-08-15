@@ -1,10 +1,14 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/client";
 import { Shop, Prisma } from "@prisma/client";
-import { AuthenticatedRequest, ShopWithRelations, ApiError } from "../types/models";
+import {
+  AuthenticatedRequest,
+  ShopWithRelations,
+  ApiError,
+} from "../types/models";
 import { logger } from "../utils/logger";
 import { isAdmin, isShopOwner } from "../config/roles";
-import  jwt  from 'jsonwebtoken';
+import jwt from "jsonwebtoken";
 
 // Create a new shop
 export const createShop = async (req: Request, res: Response): Promise<any> => {
@@ -38,13 +42,13 @@ export const createShop = async (req: Request, res: Response): Promise<any> => {
       operatingHours,
       description,
       ownerId,
-      managerId,
+      // managerId,
     } = req.body;
 
     // Verify manager is a Shop Owner
-    if (managerId) {
+    if (ownerId) {
       const manager = await prisma.user.findUnique({
-        where: { id: parseInt(managerId) },
+        where: { id: parseInt(ownerId) },
         include: { Role: true },
       });
 
@@ -64,10 +68,10 @@ export const createShop = async (req: Request, res: Response): Promise<any> => {
         contactNumber,
         email,
         operatingHours,
-        description, 
-        managerId: managerId ? parseInt(managerId) : undefined,
+        description,
+        managerId: ownerId ? parseInt(ownerId) : undefined,
       },
-      include: { 
+      include: {
         manager: {
           select: { id: true, name: true, email: true, contact: true },
         },
@@ -96,8 +100,8 @@ export const getAllShops = async (
       where: { id: userId },
       include: {
         ownedShop: true,
-        managedShop: true
-      }
+        managedShop: true,
+      },
     });
 
     if (!user) {
@@ -121,7 +125,7 @@ export const getAllShops = async (
               name: true,
               email: true,
               contact: true,
-            }
+            },
           },
           manager: {
             select: {
@@ -129,8 +133,8 @@ export const getAllShops = async (
               name: true,
               email: true,
               contact: true,
-            }
-          }
+            },
+          },
         },
       });
     } else {
@@ -155,7 +159,7 @@ export const getAllShops = async (
               name: true,
               email: true,
               contact: true,
-            }
+            },
           },
           manager: {
             select: {
@@ -163,8 +167,8 @@ export const getAllShops = async (
               name: true,
               email: true,
               contact: true,
-            }
-          }
+            },
+          },
         },
       });
     }
@@ -193,8 +197,8 @@ export const getShopById = async (
       where: { id: userId },
       include: {
         ownedShop: true,
-        managedShop: true
-      }
+        managedShop: true,
+      },
     });
 
     if (!user) {
@@ -216,7 +220,7 @@ export const getShopById = async (
             name: true,
             email: true,
             contact: true,
-          }
+          },
         },
         manager: {
           select: {
@@ -224,9 +228,9 @@ export const getShopById = async (
             name: true,
             email: true,
             contact: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     if (!shop) {
@@ -249,10 +253,7 @@ export const getShopById = async (
 };
 
 // Update shop (admin can update any, employee only their own)
-export const updateShop = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
+export const updateShop = async (req: Request, res: Response): Promise<any> => {
   try {
     const { id } = req.params;
     const userId = (req as any).user?.id;
@@ -266,8 +267,8 @@ export const updateShop = async (
       where: { id: userId },
       include: {
         ownedShop: true,
-        managedShop: true
-      }
+        managedShop: true,
+      },
     });
 
     if (!user) {
@@ -285,7 +286,7 @@ export const updateShop = async (
     // Validate ownerId and managerId if provided
     if (updateData.ownerId) {
       const owner = await prisma.user.findUnique({
-        where: { id: parseInt(updateData.ownerId) }
+        where: { id: parseInt(updateData.ownerId) },
       });
       if (!owner || owner.role !== "employee") {
         return res.status(400).json({ error: "Invalid owner ID" });
@@ -294,7 +295,7 @@ export const updateShop = async (
 
     if (updateData.managerId) {
       const manager = await prisma.user.findUnique({
-        where: { id: parseInt(updateData.managerId) }
+        where: { id: parseInt(updateData.managerId) },
       });
       if (!manager || manager.role !== "employee") {
         return res.status(400).json({ error: "Invalid manager ID" });
@@ -311,7 +312,7 @@ export const updateShop = async (
             name: true,
             email: true,
             contact: true,
-          }
+          },
         },
         manager: {
           select: {
@@ -319,9 +320,9 @@ export const updateShop = async (
             name: true,
             email: true,
             contact: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     return res.status(200).json(shop);
@@ -332,10 +333,7 @@ export const updateShop = async (
 };
 
 // Delete shop (only admin, and only if no owner/manager linked)
-export const deleteShop = async (
-  req: Request,
-  res: Response
-): Promise<any> => {
+export const deleteShop = async (req: Request, res: Response): Promise<any> => {
   try {
     const { id } = req.params;
     const userId = (req as any).user?.id;
@@ -346,7 +344,7 @@ export const deleteShop = async (
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true }
+      select: { role: true },
     });
 
     if (!user || !user.role || !isAdmin(user.role)) {
@@ -356,21 +354,22 @@ export const deleteShop = async (
     // Check if shop has owner or manager
     const shop = await prisma.shop.findUnique({
       where: { id },
-      select: { ownerId: true, managerId: true }
+      select: { ownerId: true, managerId: false },
     });
 
     if (!shop) {
       return res.status(404).json({ error: "Shop not found" });
     }
 
-    if (shop.ownerId || shop.managerId) {
-      return res.status(400).json({ 
-        error: "Cannot delete shop with linked owner or manager. Unlink them first." 
+    if (shop.ownerId) {
+      return res.status(400).json({
+        error:
+          "Cannot delete shop with linked owner or manager. Unlink them first.",
       });
     }
 
     await prisma.shop.delete({
-      where: { id }
+      where: { id },
     });
 
     return res.status(200).json({ message: "Shop deleted successfully" });
@@ -389,13 +388,15 @@ export const linkShopOwner = async (
     const { shopId, userId } = req.body;
 
     if (!shopId || !userId) {
-      return res.status(400).json({ error: "Shop ID and User ID are required" });
+      return res
+        .status(400)
+        .json({ error: "Shop ID and User ID are required" });
     }
 
     // Check if user is admin
     const currentUser = await prisma.user.findUnique({
       where: { id: (req as any).user?.id },
-      select: { role: true }
+      select: { role: true },
     });
 
     if (!currentUser || !currentUser.role || !isAdmin(currentUser.role)) {
@@ -404,7 +405,7 @@ export const linkShopOwner = async (
 
     // Check if user exists and is employee
     const user = await prisma.user.findUnique({
-      where: { id: parseInt(userId) }
+      where: { id: parseInt(userId) },
     });
 
     if (!user || user.role !== "employee") {
@@ -413,7 +414,7 @@ export const linkShopOwner = async (
 
     // Check if shop exists
     const shop = await prisma.shop.findUnique({
-      where: { id: shopId }
+      where: { id: shopId },
     });
 
     if (!shop) {
@@ -431,9 +432,9 @@ export const linkShopOwner = async (
             name: true,
             email: true,
             contact: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     return res.status(200).json(updatedShop);
@@ -454,7 +455,7 @@ export const unlinkShopOwner = async (
     // Check if user is admin
     const currentUser = await prisma.user.findUnique({
       where: { id: (req as any).user?.id },
-      select: { role: true }
+      select: { role: true },
     });
 
     if (!currentUser || !currentUser.role || !isAdmin(currentUser.role)) {
@@ -463,7 +464,7 @@ export const unlinkShopOwner = async (
 
     // Check if shop exists
     const shop = await prisma.shop.findUnique({
-      where: { id: shopId }
+      where: { id: shopId },
     });
 
     if (!shop) {
@@ -481,9 +482,9 @@ export const unlinkShopOwner = async (
             name: true,
             email: true,
             contact: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     return res.status(200).json(updatedShop);

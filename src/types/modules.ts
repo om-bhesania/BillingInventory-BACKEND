@@ -23,7 +23,7 @@ export const ADMIN_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
   Shop: ["read", "write", "update", "delete"],
   Employee: ["read", "write", "update", "delete"],
   Home: ["read"],
-  "Shop Inventory": ["read", "write", "update", "delete"],
+  "Shop Inventory": [],
 };
 
 export const SHOP_OWNER_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
