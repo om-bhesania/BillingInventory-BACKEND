@@ -4,8 +4,7 @@ import { User, Role, Permission, Shop } from '@prisma/client';
 // Base interfaces extending Prisma types
 export interface BaseUser extends User {
   Role?: BaseRole;
-  ownedShop?: Shop;
-  managedShop?: Shop;
+  managedShops: Shop[];
 }
 
 export interface BaseRole extends Role {
@@ -46,8 +45,7 @@ export interface LoginResponse {
     email: string | null;
     role: string;
     permissions: Record<string, boolean>;
-    ownedShop?: Shop | null;
-    managedShop?: Shop | null;
+    managedShops: Shop[];
   };
   accessToken: string;
 }

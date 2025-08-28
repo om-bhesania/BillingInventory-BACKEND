@@ -12,6 +12,14 @@ import categoryRoutes from "./routes/categoryRoutes";
 import flavourRoutes from "./routes/flavourRoutes";
 import productRoutes from "./routes/productRoutes";
 import shopRoutes from "./routes/shopRoutes";
+import notificationRoutes from "./routes/notificationRoutes";
+import shopInventoryRoutes from "./routes/shopInventoryRoutes";
+import restockRequestRoutes from "./routes/restockRequestRoutes";
+import billingRoutes from "./routes/billingRoutes";
+import dashboardRoutes from "./routes/dashboardRoutes";
+import auditLogRoutes from "./routes/auditLogRoutes";
+import lowStockRoutes from "./routes/lowStockRoutes";
+import packagingTypeRoutes from "./routes/packagingTypeRoutes";
 import swaggerSpecs from "./swaggerConfig";
 
 // Load environment variables
@@ -22,7 +30,18 @@ const app: Application = express();
 // Middlewares
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
+    origin: (origin, callback) => {
+      const allowed = [
+        process.env.FRONTEND_ORIGIN || "http://localhost:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:5173",
+      ];
+      if (!origin || allowed.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
   })
 );
@@ -73,7 +92,15 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/flavours", flavourRoutes);
 app.use("/api/shops", shopRoutes);
-app.use("/ping", pingRouter);
+app.use("/api/shop-inventory", shopInventoryRoutes);
+app.use("/api/restock-requests", restockRequestRoutes);
+app.use("/api/billing", billingRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/audit-log", auditLogRoutes);
+app.use("/api/low-stock", lowStockRoutes);
+app.use("/api/packaging-types", packagingTypeRoutes);
+app.use("/api/ping", pingRouter);
 // Global Error Handler
 app.use(errorHandler);
 

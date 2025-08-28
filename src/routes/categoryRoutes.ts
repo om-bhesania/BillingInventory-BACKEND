@@ -1,5 +1,4 @@
-import express, { RequestHandler } from "express";
-import { authenticateToken } from "../middlewares/ErrorHandlers/checkAccess";
+import express, { RequestHandler } from "express"; 
 import {
     getCategories,
     getCategoryById,
@@ -7,11 +6,12 @@ import {
     updateCategory,
     deleteCategory,
 } from "../controllers/categoryController";
+import { authenticateToken } from "../middlewares/auth";
 
 const router = express.Router();
 
 // Apply authentication middleware to all category routes
-router.use(authenticateToken);
+router.use(authenticateToken as any);
 
 /**
  * @swagger

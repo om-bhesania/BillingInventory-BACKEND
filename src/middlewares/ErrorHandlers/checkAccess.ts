@@ -80,8 +80,7 @@ export const checkAccess = (
         select: {
           id: true,
           role: true,
-          ownedShop: true,
-          managedShop: true,
+          managedShops: true,
         },
       });
 
@@ -96,8 +95,18 @@ export const checkAccess = (
         return;
       }
 
-      // For now, non-admin users are restricted
-      // In the future, you can implement permission checking based on the simplified roles
+      // Allow Shop_Owner to read dashboard resources
+      if (resource === "Dashboard" && action === "read" && user.role && isShopOwner(user.role)) {
+        next();
+        return;
+      }
+
+      // Allow Shop_Owner to read Low Stock Alerts (their own data will be scoped in controller)
+      if (resource === "Low Stock Alerts" && action === "read" && user.role && isShopOwner(user.role)) {
+        next();
+        return;
+      }
+
       res.status(403).json({ message: "Access denied" });
       return;
     } catch (error) {
@@ -124,8 +133,7 @@ export const checkShopAccess = (
       const user = await prisma.user.findUnique({
         where: { id: parseInt(userId) },
         include: {
-          ownedShop: true,
-          managedShop: true,
+          managedShops: true,
         },
       });
 
@@ -143,9 +151,8 @@ export const checkShopAccess = (
       // Shop Owner can only access their own shop
       if (user.role && isShopOwner(user.role)) {
         // Type-safe access to shop relations
-        const ownedShop = user.ownedShop;
-        const managedShop = user.managedShop;
-        const userShopId = ownedShop?.id || managedShop?.id;
+        const managedShops = user.managedShops;
+        const userShopId = managedShops?.find((shop) => shop.id === shopId);
         
         if (userShopId !== shopId) {
           res.status(403).json({ message: "Access denied to this shop" });

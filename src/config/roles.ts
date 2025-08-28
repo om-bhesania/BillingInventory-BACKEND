@@ -55,7 +55,7 @@ export const isAdmin = (roleName: string): boolean => {
 };
 
 export const isShopOwner = (roleName: string): boolean => {
-  return roleName === "Shop_Owner";
+  return roleName === "Shop Owner" || roleName === "Shop_Owner";
 };
 
 export const getRolePermissions = (roleName: string): string[] => {

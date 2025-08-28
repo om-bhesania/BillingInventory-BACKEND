@@ -1,18 +1,24 @@
 import express, { RequestHandler } from "express";
-import { authenticateToken } from "../middlewares/ErrorHandlers/checkAccess";
+import { authenticateToken } from "../middlewares/auth";
+import { userRateLimiter } from "../middlewares/rateLimiter";
 import {
+  createProduct,
   getProducts,
   getProductById,
-  getProductBySku,
-  createProduct,
   updateProduct,
   deleteProduct,
+  getProductsByFlavor,
+  getLowStockProducts,
+  getProductBySku,
 } from "../controllers/Products/ProductsController";
 
 const productRoutes = express.Router();
 
 // Apply authentication middleware to all product routes
-productRoutes.use(authenticateToken);
+productRoutes.use(authenticateToken as any);
+
+// Apply rate limiting to all product routes
+productRoutes.use(userRateLimiter);
 
 /**
  * @swagger
@@ -289,5 +295,48 @@ productRoutes.put("/:id", updateProduct as RequestHandler);
  *         description: Product not found
  */
 productRoutes.delete("/:id", deleteProduct as RequestHandler);
+
+/**
+ * @swagger
+ * /api/products/flavor/{flavorId}:
+ *   get:
+ *     summary: Get products by flavor
+ *     description: Retrieve all products for a specific flavor
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: flavorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Flavor ID
+ *     responses:
+ *       200:
+ *         description: Products retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Flavor not found
+ */
+productRoutes.get("/flavor/:flavorId", getProductsByFlavor as RequestHandler);
+
+/**
+ * @swagger
+ * /api/products/low-stock:
+ *   get:
+ *     summary: Get low stock products
+ *     description: Retrieve all products that are below their minimum stock level
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Low stock products retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ */
+productRoutes.get("/low-stock", getLowStockProducts as RequestHandler);
 
 export default productRoutes;

@@ -1,5 +1,4 @@
-import express, { RequestHandler } from "express";
-import { authenticateToken } from "../middlewares/ErrorHandlers/checkAccess";
+import express, { RequestHandler } from "express"; 
 import {
   getFlavors,
   getFlavorById,
@@ -7,11 +6,12 @@ import {
   updateFlavor,
   deleteFlavor,
 } from "../controllers/flavourController";
+import { authenticateToken } from "../middlewares/auth";
 
 const flavourRoutes = express.Router();
 
 // Apply authentication middleware to all flavour routes
-flavourRoutes.use(authenticateToken);
+flavourRoutes.use(authenticateToken as any);
 
 /**
  * @swagger

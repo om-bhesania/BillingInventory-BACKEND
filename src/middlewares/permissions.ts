@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { hasPermission } from '../utils/permissions';
+import { hasPermission, UserWithRole } from '../utils/permissions';
 import { logger } from '../utils/logger';
 import { AuthUser } from '../types/auth';
+import { prisma } from '../config/client';
 
 /**
  * Middleware to check if user has required permissions
@@ -15,7 +16,14 @@ export function checkPermissions(resource: string, action: string) {
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
-    if (hasPermission(user, resource, action)) {
+    // Convert AuthUser to UserWithRole for permission checking
+    const userWithRole: UserWithRole = {
+      ...user,
+      password: '', // Add empty password as it's required by UserWithRole
+      shopIds: user.shopIds || [], // Add shopIds field with default empty array
+    } as UserWithRole;
+
+    if (hasPermission(userWithRole, resource, action)) {
       next();
     } else {
       logger.warn('Permission denied', { 
@@ -49,8 +57,15 @@ export function checkShopAccess() {
       return next();
     }
 
-    // Check if user owns or manages this shop
-    if (user.ownedShop?.id === shopId || user.managedShop?.id === shopId) {
+    // Check if user manages this shop by querying directly
+    const managedShop = await prisma.shop.findFirst({
+      where: { 
+        id: shopId,
+        managerId: user.publicId 
+      },
+    });
+
+    if (managedShop) {
       return next();
     }
 

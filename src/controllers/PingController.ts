@@ -1,15 +1,29 @@
-import { Response, NextFunction } from "express";
+import { Response, NextFunction, Request } from "express";
 import { PrismaClient } from "@prisma/client";
+import { prisma as sharedPrisma } from "../config/client";
 import { yellowBG } from "console-log-colors";
 import { AuthRequest } from "../middlewares/auth";
+import jwt from "jsonwebtoken";
 
-const prisma = new PrismaClient();
+const prisma = sharedPrisma ?? new PrismaClient();
 
-export const ping = async (req: AuthRequest, res: Response): Promise<void> => {
-  console.log("Ping request received", yellowBG(req.body.publicId));
+export const ping = async (req: AuthRequest & Request, res: Response): Promise<void> => {
+  // Resolve publicId from req.user (preferred) or decode token
+  let publicId: string | undefined = (req as any)?.user?.publicId as string | undefined;
+  if (!publicId) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : undefined;
+    if (token) {
+      try {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET as string);
+        publicId = decoded?.publicId;
+      } catch {}
+    }
+  }
 
-  // Ensure publicId is provided
-  if (!req?.publicId) {
+  console.log("Ping request received", yellowBG(String(publicId || "unknown")));
+
+  if (!publicId) {
     res.status(401).json({
       tokenValidity: false,
       message: "Unauthorized - Missing publicId in token",
@@ -18,15 +32,17 @@ export const ping = async (req: AuthRequest, res: Response): Promise<void> => {
   }
 
   try {
+    // Get user with role and permissions
     const user = await prisma.user.findUnique({
-      where: { publicId: req?.publicId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        roleId: true,
-        Role: { select: { name: true } },
-        publicId: true,
+      where: { publicId: publicId as string },
+      include: {
+        Role: {
+          include: {
+            permissions: {
+              include: { permission: true },
+            },
+          },
+        },
       },
     });
 
@@ -38,6 +54,33 @@ export const ping = async (req: AuthRequest, res: Response): Promise<void> => {
       return;
     }
 
+    // Get shops where this user is the manager (using publicId)
+    const managedShops = await prisma.shop.findMany({
+      where: { managerId: publicId as string },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        contactNumber: true,
+        isActive: true,
+      },
+    });
+
+    // Group permissions by module(resource) with allowed actions; limit to known modules
+    const allowedModules = new Set(["Home", "Inventory", "Billing", "Shop", "Employee"]);
+    const grouped: Record<string, Set<string>> = {};
+    for (const rp of user.Role?.permissions || []) {
+      const resource = rp.permission.resource;
+      const action = rp.permission.action;
+      if (!allowedModules.has(resource)) continue;
+      if (!grouped[resource]) grouped[resource] = new Set<string>();
+      grouped[resource].add(action);
+    }
+    const permissions = Object.entries(grouped).map(([module, actions]) => ({
+      module,
+      permissions: Array.from(actions.values()).sort(),
+    }));
+
     res.json({
       tokenValidity: true,
       user: {
@@ -45,8 +88,10 @@ export const ping = async (req: AuthRequest, res: Response): Promise<void> => {
         name: user.name,
         email: user.email,
         role: user.Role?.name || null,
-        roleId: user?.roleId,
+        roleId: user?.roleId || null,
         publicId: user?.publicId,
+        permissions,
+        managedShops,
       },
     });
   } catch (err) {

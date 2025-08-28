@@ -1,17 +1,23 @@
 import express, { RequestHandler } from "express";
-import { authenticateToken } from "../middlewares/ErrorHandlers/checkAccess";
+import { authenticateToken } from "../middlewares/auth";
+import { userRateLimiter } from "../middlewares/rateLimiter";
 import {
   createShop,
   getAllShops,
   getShopById,
   updateShop,
   deleteShop,
+  linkShopToUser,
+  unlinkShopFromUser,
 } from "../controllers/shopControllers";
 
 const shopRoutes = express.Router();
 
 // Apply authentication middleware to all shop routes
-shopRoutes.use(authenticateToken);
+shopRoutes.use(authenticateToken as any);
+
+// Apply rate limiting to all shop routes
+shopRoutes.use(userRateLimiter);
 
 /**
  * @swagger
@@ -35,9 +41,7 @@ shopRoutes.use(authenticateToken);
  *         name:
  *           type: string
  *           description: Shop name
- *         location:
- *           type: string
- *           description: Shop location
+
  *         address:
  *           type: string
  *           description: Shop address
@@ -81,7 +85,7 @@ shopRoutes.use(authenticateToken);
  *       example:
  *         id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
  *         name: "Ice Cream Haven"
- *         location: "Downtown"
+
  *         address: "123 Main Street"
  *         contactNumber: "+1234567890"
  *         email: "contact@icecreamhaven.com"
@@ -113,7 +117,7 @@ shopRoutes.use(authenticateToken);
  *             type: object
  *             required:
  *               - name
- *               - location
+
  *               - address
  *               - contactNumber
  *               - email
@@ -122,9 +126,7 @@ shopRoutes.use(authenticateToken);
  *               name:
  *                 type: string
  *                 description: Shop name
- *               location:
- *                 type: string
- *                 description: Shop location
+
  *               address:
  *                 type: string
  *                 description: Shop address
@@ -158,6 +160,8 @@ shopRoutes.use(authenticateToken);
  *         description: Forbidden - Admin access required
  */
 shopRoutes.post("/add-shop", createShop as RequestHandler);
+shopRoutes.post("/link", linkShopToUser as RequestHandler);
+shopRoutes.post("/unlink", unlinkShopFromUser as RequestHandler);
 
 /**
  * @swagger

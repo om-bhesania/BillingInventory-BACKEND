@@ -4,7 +4,12 @@ export type ModuleName =
   | "Shop"
   | "Employee"
   | "Home"
-  | "Shop Inventory";
+  | "Shop Inventory"
+  | "Restock Management"
+  | "Notifications"
+  | "Dashboard"
+  | "Audit Log"
+  | "Low Stock Alerts";
 
 export type ActionType = "read" | "write" | "update" | "delete";
 
@@ -15,6 +20,11 @@ export const SYSTEM_MODULES: ModuleName[] = [
   "Employee",
   "Home",
   "Shop Inventory",
+  "Restock Management",
+  "Notifications",
+  "Dashboard",
+  "Audit Log",
+  "Low Stock Alerts",
 ];
 
 export const ADMIN_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
@@ -24,6 +34,11 @@ export const ADMIN_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
   Employee: ["read", "write", "update", "delete"],
   Home: ["read"],
   "Shop Inventory": [],
+  "Restock Management": ["read", "write", "update", "delete"],
+  Notifications: ["read", "write", "update", "delete"],
+  Dashboard: ["read"],
+  "Audit Log": ["read"],
+  "Low Stock Alerts": ["read"],
 };
 
 export const SHOP_OWNER_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
@@ -33,6 +48,11 @@ export const SHOP_OWNER_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
   Employee: [],
   Home: ["read"],
   "Shop Inventory": ["read", "write", "update", "delete"],
+  "Restock Management": [],
+  Notifications: ["read", "write", "update", "delete"],
+  Dashboard: ["read"],
+  "Audit Log": ["read"],
+  "Low Stock Alerts": ["read"],
 };
 
 export const DEFAULT_PERMISSIONS: any = {

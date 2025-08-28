@@ -1,31 +1,19 @@
 import { User, Role, Shop } from '@prisma/client';
 
-export interface AuthUser extends User {
-  Role?: Role & {
-    permissions: Array<{
-      permission: {
-        action: string;
-        resource: string;
-        description?: string;
-      };
-    }>;
-  };
-  ownedShop?: Shop;
-  managedShop?: Shop;
+export interface AuthenticatedUser {
+  id: number;
+  publicId: string;
+  name: string | null;
+  email: string | null;
+  role: string | null;
+  roleId: string | null;
+  contact: string | null;
+  shopIds: string[];
+  managedShops: Shop[];
+  Role?: Role;
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: {
-        id: string;
-        name: string;
-        role: string;
-        roleId: string;
-        email: string;
-        contact: string;
-        ownedShop?: Shop;
-      };
-    }
-  }
-}
+// Export AuthUser as an alias for AuthenticatedUser for backward compatibility
+export type AuthUser = AuthenticatedUser;
+
+// Express Request interface extension is handled in middlewares/ErrorHandlers/checkAccess.ts

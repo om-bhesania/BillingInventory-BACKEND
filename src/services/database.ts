@@ -1,6 +1,6 @@
-import { Prisma, PrismaClient } from '@prisma/client';
-import { createError } from '../middlewares/ErrorHandlers/errorHandler';
-import { UserWithRelations, ShopWithRelations } from '../types/models';
+import { Prisma, PrismaClient } from "@prisma/client";
+import { createError } from "../middlewares/ErrorHandlers/errorHandler";
+import { UserWithRelations, ShopWithRelations } from "../types/models";
 
 const prisma = new PrismaClient();
 
@@ -13,21 +13,36 @@ export class DatabaseService {
           include: {
             permissions: {
               include: {
-                permission: true
-              }
-            }
-          }
+                permission: true,
+              },
+            },
+          },
         },
-        ownedShop: true,
-        managedShop: true
-      }
+      },
     });
 
     if (!user) {
-      throw createError('User not found', 404, 'USER_NOT_FOUND');
+      throw createError("User not found", 404, "USER_NOT_FOUND");
     }
 
-    return user;
+    // Get shops where this user is the manager
+    const managedShops = await prisma.shop.findMany({
+      where: { managerId: user.publicId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        description: true,
+        contactNumber: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        managerId: true,
+      },
+    });
+
+    // @ts-ignore
+    return { ...user, managedShops };
   }
 
   static async findUserByEmail(email: string): Promise<UserWithRelations> {
@@ -38,66 +53,70 @@ export class DatabaseService {
           include: {
             permissions: {
               include: {
-                permission: true
-              }
-            }
-          }
+                permission: true,
+              },
+            },
+          },
         },
-        ownedShop: true,
-        managedShop: true
-      }
+      },
     });
 
     if (!user) {
-      throw createError('User not found', 404, 'USER_NOT_FOUND');
+      throw createError("User not found", 404, "USER_NOT_FOUND");
     }
 
-    return user;
+    // Get shops where this user is the manager
+    const managedShops = await prisma.shop.findMany({
+      where: { managerId: user.publicId },
+    });
+
+    // @ts-ignore
+    return { ...user, managedShops };
   }
 
   static async findShopById(id: string): Promise<ShopWithRelations> {
     const shop = await prisma.shop.findUnique({
       where: { id },
       include: {
-        owner: true,
         manager: true,
         inventory: {
           include: {
-            product: true
-          }
+            product: true,
+          },
         },
         restockRequests: {
           include: {
-            product: true
-          }
-        }
-      }
+            product: true,
+          },
+        },
+      },
     });
 
     if (!shop) {
-      throw createError('Shop not found', 404, 'SHOP_NOT_FOUND');
+      throw createError("Shop not found", 404, "SHOP_NOT_FOUND");
     }
 
     return shop;
   }
 
-  static async createShop(data: Prisma.ShopCreateInput): Promise<ShopWithRelations> {
+  static async createShop(
+    data: Prisma.ShopCreateInput
+  ): Promise<ShopWithRelations> {
     return await prisma.shop.create({
       data,
       include: {
-        owner: true,
         manager: true,
         inventory: {
           include: {
-            product: true
-          }
+            product: true,
+          },
         },
         restockRequests: {
           include: {
-            product: true
-          }
-        }
-      }
+            product: true,
+          },
+        },
+      },
     });
   }
 
@@ -109,25 +128,24 @@ export class DatabaseService {
       where: { id },
       data,
       include: {
-        owner: true,
         manager: true,
         inventory: {
           include: {
-            product: true
-          }
+            product: true,
+          },
         },
         restockRequests: {
           include: {
-            product: true
-          }
-        }
-      }
+            product: true,
+          },
+        },
+      },
     });
   }
 
   static async deleteShop(id: string): Promise<void> {
     await prisma.shop.delete({
-      where: { id }
+      where: { id },
     });
   }
 }

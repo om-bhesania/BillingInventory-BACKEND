@@ -29,30 +29,13 @@ export type UserWithRelations = Prisma.UserGetPayload<{
       include: {
         permissions: {
           include: {
-            permission: true
-          }
-        }
-      }
-    }
-    ownedShop: {
-      select: {
-        id: true;
-        name: true;
-        email: true;
-        description: true;
-        location: true;
-        contactNumber: true;
-        isActive: true;
-        openingDate: true;
-        maxCapacity: true;
-        createdAt: true;
-        updatedAt: true;
-        ownerId: true;
-        managerId: true;
-      }
-    }
-    managedShop: true
-  }
+            permission: true;
+          };
+        };
+      };
+    };
+    managedShops: true;
+  };
 }> & {
   Role?: RoleWithPermissions;
 };
@@ -72,7 +55,6 @@ export type RoleWithRelations = Prisma.RoleGetPayload<{
 // Shop with relations
 export type ShopWithRelations = Prisma.ShopGetPayload<{
   include: {
-    owner: true
     manager: true
     inventory: {
       include: {

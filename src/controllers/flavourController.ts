@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/client";
+import { emitUserNotification } from "./NotificationsController";
+import { logActivity } from "../utils/audit";
 
 export const createFlavor = async (req: Request, res: Response) => {
   try {
@@ -11,8 +13,24 @@ export const createFlavor = async (req: Request, res: Response) => {
         imageUrl: imageUrl,
       },
     });
-
+    try {
+        const userId = (req as any).user?.publicId as string | undefined;
+      if (userId) {
+        const created = await prisma.notification.create({
+          data: { userId, type: "FLAVOR_CREATED", message: `Created flavor ${flavor.name}` },
+        });
+        await emitUserNotification(userId.toString(), { event: "created", notification: created });
+      }
+    } catch {}
     res.status(201).json(flavor);
+    await logActivity({
+      type: "flavor",
+      action: "created",
+      entity: "Flavor",
+      entityId: flavor.id,
+      userId: (req as any).user?.publicId,
+      meta: { name: flavor.name }
+    });
   } catch (error) {
     console.error("Error creating flavor:", error);
     if ((error as any).code === "P2002") {

@@ -17,9 +17,7 @@ export class DatabaseService {
               }
             }
           }
-        },
-        ownedShop: true,
-        managedShop: true
+        }
       }
     });
 
@@ -27,20 +25,24 @@ export class DatabaseService {
       throw createError('User not found', 404, 'USER_NOT_FOUND');
     }
 
+    // Get shops where this user is the manager
+    const managedShops = await prisma.shop.findMany({
+      where: { managerId: user.publicId },
+    });
+
     // Transform the Role and Shop properties to match BaseUser type
     const transformedUser: BaseUser = {
       ...user,
       Role: user.Role ? {
         ...user.Role,
-        permissions: user.Role.permissions.map(p => ({
+        permissions: user.Role.permissions.map((p: any) => ({
           id: p.id,
           roleId: p.roleId,
           permissionId: p.permissionId,
           permission: p.permission
         }))
       } : undefined,
-      ownedShop: user.ownedShop || undefined,
-      managedShop: user.managedShop || undefined
+      managedShops: managedShops || []
     };
 
     return transformedUser;
@@ -58,9 +60,7 @@ export class DatabaseService {
               }
             }
           }
-        },
-        ownedShop: true,
-        managedShop: true
+        }
       }
     });
 
@@ -68,20 +68,24 @@ export class DatabaseService {
       throw createError('User not found', 404, 'USER_NOT_FOUND');
     }
 
+    // Get shops where this user is the manager
+    const managedShops = await prisma.shop.findMany({
+      where: { managerId: user.publicId },
+    });
+
     // Transform the Role and Shop properties to match BaseUser type
     const transformedUser: BaseUser = {
       ...user,
       Role: user.Role ? {
         ...user.Role,
-        permissions: user.Role.permissions.map(p => ({
+        permissions: user.Role.permissions.map((p: any) => ({
           id: p.id,
           roleId: p.roleId,
           permissionId: p.permissionId,
           permission: p.permission
         }))
       } : undefined,
-      ownedShop: user.ownedShop || undefined,
-      managedShop: user.managedShop || undefined
+      managedShops: managedShops || []
     };
 
     return transformedUser;

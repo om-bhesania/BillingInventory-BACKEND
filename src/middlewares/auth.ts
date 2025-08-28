@@ -46,9 +46,10 @@ export async function authenticateToken(
       throw createError("No token provided", 401, "NO_TOKEN");
     }
 
+    // Use the same secret used to sign access tokens
     const decoded = jwt.verify(
       token,
-      process.env.ACCESS_TOKEN_SECRET as string
+      process.env.JWT_SECRET as string
     ) as jwt.JwtPayload;
 
     if (!decoded.id) {

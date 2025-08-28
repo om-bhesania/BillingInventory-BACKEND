@@ -1,17 +1,17 @@
-import express, { RequestHandler } from "express";
-import { authenticateToken } from "../../middlewares/ErrorHandlers/checkAccess";
+import express from "express";
 import {
   createRole,
   deleteRole,
   getAllRoles,
-  updateRole,
   getRoleById,
-} from "../../controllers/Roles/Roles";
+  updateRole,
+} from "../../controllers/Roles/Roles"; 
+import { authenticateToken } from "../../middlewares/auth";
 
 const roleRoutes = express.Router();
 
 // Apply authentication middleware to all role routes
-roleRoutes.use(authenticateToken);
+roleRoutes.use(authenticateToken as any);
 
 /**
  * @swagger

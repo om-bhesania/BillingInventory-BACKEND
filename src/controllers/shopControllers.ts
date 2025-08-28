@@ -1,87 +1,264 @@
 import { Request, Response } from "express";
-import { prisma } from "../config/client";
-import { Shop, Prisma } from "@prisma/client";
-import {
-  AuthenticatedRequest,
-  ShopWithRelations,
-  ApiError,
-} from "../types/models";
+import { PrismaClient } from "@prisma/client";
+import { prisma as sharedPrisma } from "../config/client";
 import { logger } from "../utils/logger";
-import { isAdmin, isShopOwner } from "../config/roles";
-import jwt from "jsonwebtoken";
+import { isAdmin } from "../config/roles";
+import { addShopIdToUser, removeShopIdFromUser } from "../utils/shopIdManager";
+import { logActivity } from "../utils/audit";
+
+const prisma = sharedPrisma ?? new PrismaClient();
 
 // Create a new shop
-export const createShop = async (req: Request, res: Response): Promise<any> => {
+export const createShop = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
   try {
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token)
-      return res.status(401).json({ error: "Authorization token missing" });
-
-    // Decode token and get roleId
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      roleId: string;
-      userId: number;
-    };
-    if (!decoded?.roleId)
-      return res.status(401).json({ error: "Invalid token" });
-
-    // Check if user role is Admin
-    const userRole = await prisma.role.findUnique({
-      where: { id: decoded.roleId },
-    });
-    if (!userRole || userRole.name !== "Admin") {
-      return res.status(403).json({ error: "Only Admins can create shops" });
-    }
-
     const {
       name,
-      location,
+      description,
       address,
       contactNumber,
       email,
       operatingHours,
-      description,
-      ownerId,
-      // managerId,
+      managerId, // Now using publicId
     } = req.body;
 
-    // Verify manager is a Shop Owner
-    if (ownerId) {
-      const manager = await prisma.user.findUnique({
-        where: { id: parseInt(ownerId) },
-        include: { Role: true },
+    // Validate required fields
+    if (!name || !address || !contactNumber || !email || !operatingHours || !managerId) {
+      return res.status(400).json({
+        error: "Missing required fields",
+        required: ["name", "address", "contactNumber", "email", "operatingHours", "managerId"],
       });
+    }
 
-      if (!manager)
-        return res.status(400).json({ error: "Manager user not found" });
+    // Validate and clean shop name
+    const trimmedName = name.trim();
+    if (!trimmedName || trimmedName.length < 2) {
+      return res.status(400).json({
+        error: "Shop name must be at least 2 characters long",
+        field: "name"
+      });
+    }
 
-      if (manager.role !== "Shop Owner") {
-        return res.status(400).json({ error: "Manager must be a Shop Owner" });
-      }
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        error: "Please provide a valid email address",
+        field: "email"
+      });
+    }
+
+    // Validate contact number (basic validation)
+    const contactRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
+    if (!contactRegex.test(contactNumber)) {
+      return res.status(400).json({
+        error: "Please provide a valid contact number (at least 10 digits)",
+        field: "contactNumber"
+      });
+    }
+
+    // Check if manager exists - managerId is now required
+    const manager = await prisma.user.findUnique({
+      where: { publicId: managerId },
+    });
+    if (!manager) {
+      return res.status(404).json({ error: "Manager not found" });
+    }
+
+    // Check if a shop with the same name already exists
+    const existingShop = await prisma.shop.findFirst({
+      where: { name: trimmedName },
+    });
+    if (existingShop) {
+      return res.status(409).json({ 
+        error: "Shop with this name already exists",
+        existingShop: {
+          id: existingShop.id,
+          name: existingShop.name,
+          address: existingShop.address
+        }
+      });
     }
 
     const shop = await prisma.shop.create({
       data: {
-        name,
-        location,
+        name: trimmedName,
+        description,
         address,
         contactNumber,
         email,
         operatingHours,
-        description,
-        managerId: ownerId ? parseInt(ownerId) : undefined,
+        managerId, // Using publicId
       },
       include: {
         manager: {
-          select: { id: true, name: true, email: true, contact: true },
+          select: {
+            publicId: true,
+            name: true,
+            email: true,
+            contact: true,
+          },
         },
       },
     });
 
+    // Automatically add shop ID to user's shopIds array (managerId is now required)
+    try {
+      await addShopIdToUser(managerId, shop.id);
+      logger.info(`Added shop ID ${shop.id} to user ${managerId}'s shopIds array`);
+    } catch (error) {
+      logger.error(`Failed to add shop ID to user's shopIds array:`, error);
+      // Don't fail the shop creation if this fails
+    }
+
+    logger.business.shopCreated(shop.name, shop.managerId || '');
+    await logActivity({
+      type: "shop",
+      action: "created",
+      entity: "Shop",
+      entityId: shop.id,
+      userId: (req as any).user?.publicId,
+      shopId: shop.id,
+      meta: { name }
+    });
     return res.status(201).json(shop);
+  } catch (error: any) {
+    logger.error("Error creating shop:", error);
+    
+    // Handle specific Prisma errors
+    if (error.code === 'P2002') {
+      const field = error.meta?.target?.[0];
+      if (field === 'name') {
+        return res.status(409).json({ 
+          error: "Shop with this name already exists. Please choose a different name.",
+          field: 'name'
+        });
+      }
+      return res.status(409).json({ 
+        error: `A shop with this ${field} already exists.`,
+        field: field
+      });
+    }
+    
+    // Handle other Prisma errors
+    if (error.code && error.code.startsWith('P')) {
+      return res.status(400).json({ 
+        error: "Invalid data provided. Please check your input.",
+        details: error.message
+      });
+    }
+    
+    console.log(error);
+    return res.status(500).json({ error: "Failed to create shop. Please try again later." });
+  }
+};
+
+// Link a shop to a user as manager
+export const linkShopToUser = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const { shopId, userPublicId, role } = req.body as {
+      shopId: string;
+      userPublicId: string;
+      role: "manager";
+    };
+    if (!shopId || !userPublicId || !role) {
+      return res
+        .status(400)
+        .json({ error: "shopId, userPublicId and role are required" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { publicId: userPublicId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+    if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+    // Get shops that this user was previously managing to remove from their shopIds
+    const previousShops = await prisma.shop.findMany({
+      where: { managerId: userPublicId },
+      select: { id: true }
+    });
+
+    // Clear any previous management assignments for this user
+    await prisma.shop.updateMany({
+      where: { managerId: userPublicId },
+      data: { managerId: null },
+    });
+
+    // Remove previous shop IDs from user's shopIds array
+    for (const shop of previousShops) {
+      try {
+        await removeShopIdFromUser(userPublicId, shop.id);
+      } catch (error) {
+        logger.error(`Failed to remove shop ID ${shop.id} from user ${userPublicId}'s shopIds array:`, error);
+      }
+    }
+    
+    const updated = await prisma.shop.update({
+      where: { id: shopId },
+      data: { managerId: userPublicId },
+      include: { manager: true },
+    });
+
+    // Add new shop ID to user's shopIds array
+    try {
+      await addShopIdToUser(userPublicId, shopId);
+      logger.info(`Added shop ID ${shopId} to user ${userPublicId}'s shopIds array`);
+    } catch (error) {
+      logger.error(`Failed to add shop ID to user's shopIds array:`, error);
+    }
+
+    return res.json(updated);
   } catch (error) {
-    console.error("Error creating shop:", error);
-    return res.status(500).json({ error: "Failed to create shop" });
+    console.error("Error linking shop to user:", error);
+    return res.status(500).json({ error: "Failed to link shop to user" });
+  }
+};
+
+// Unlink a shop from a user (manager)
+export const unlinkShopFromUser = async (
+  req: Request,
+  res: Response
+): Promise<any> => {
+  try {
+    const { shopId } = req.body as {
+      shopId: string;
+    };
+    if (!shopId) {
+      return res.status(400).json({ error: "shopId is required" });
+    }
+
+    const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+    if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+    // Get the current manager before removing
+    const currentManagerId = shop.managerId;
+
+    const updated = await prisma.shop.update({
+      where: { id: shopId },
+      data: { managerId: null },
+      include: { manager: true },
+    });
+
+    // Remove shop ID from user's shopIds array if there was a manager
+    if (currentManagerId) {
+      try {
+        await removeShopIdFromUser(currentManagerId, shopId);
+        logger.info(`Removed shop ID ${shopId} from user ${currentManagerId}'s shopIds array`);
+      } catch (error) {
+        logger.error(`Failed to remove shop ID from user's shopIds array:`, error);
+      }
+    }
+
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error unlinking shop from user:", error);
+    return res.status(500).json({ error: "Failed to unlink shop from user" });
   }
 };
 
@@ -91,16 +268,15 @@ export const getAllShops = async (
   res: Response
 ): Promise<any> => {
   try {
-    const userId = (req as any).user?.id;
-    if (!userId) {
+    const userPublicId = (req as any).user?.publicId;
+    if (!userPublicId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { publicId: userPublicId },
       include: {
-        ownedShop: true,
-        managedShop: true,
+        Role: true,
       },
     });
 
@@ -109,7 +285,7 @@ export const getAllShops = async (
     }
 
     let shops;
-    if (user.role && isAdmin(user.role)) {
+    if (user.Role && isAdmin(user.Role.name)) {
       // Admin sees all shops
       shops = await prisma.shop.findMany({
         include: {
@@ -119,17 +295,9 @@ export const getAllShops = async (
               restockRequests: true,
             },
           },
-          owner: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              contact: true,
-            },
-          },
           manager: {
             select: {
-              id: true,
+              publicId: true,
               name: true,
               email: true,
               contact: true,
@@ -138,14 +306,19 @@ export const getAllShops = async (
         },
       });
     } else {
-      // Employee sees only their shop
-      const userShopId = user.ownedShop?.id || user.managedShop?.id;
-      if (!userShopId) {
+      // Shop managers see only their shops (temporary until shopIds is available)
+      const managedShops = await prisma.shop.findMany({
+        where: { managerId: userPublicId },
+        select: { id: true }
+      });
+      const userShopIds = managedShops.map(shop => shop.id);
+      
+      if (userShopIds.length === 0) {
         return res.status(200).json([]);
       }
 
       shops = await prisma.shop.findMany({
-        where: { id: userShopId },
+        where: { id: { in: userShopIds } },
         include: {
           _count: {
             select: {
@@ -153,17 +326,9 @@ export const getAllShops = async (
               restockRequests: true,
             },
           },
-          owner: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              contact: true,
-            },
-          },
           manager: {
             select: {
-              id: true,
+              publicId: true,
               name: true,
               email: true,
               contact: true,
@@ -187,17 +352,16 @@ export const getShopById = async (
 ): Promise<any> => {
   try {
     const { id } = req.params;
-    const userId = (req as any).user?.id;
+    const userPublicId = (req as any).user?.publicId;
 
-    if (!userId) {
+    if (!userPublicId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { publicId: userPublicId },
       include: {
-        ownedShop: true,
-        managedShop: true,
+        Role: true,
       },
     });
 
@@ -214,17 +378,9 @@ export const getShopById = async (
             restockRequests: true,
           },
         },
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            contact: true,
-          },
-        },
         manager: {
           select: {
-            id: true,
+            publicId: true,
             name: true,
             email: true,
             contact: true,
@@ -237,10 +393,15 @@ export const getShopById = async (
       return res.status(404).json({ error: "Shop not found" });
     }
 
-    // Check access: admin can see all, employee only their shop
-    if (!user.role || !isAdmin(user.role)) {
-      const userShopId = user.ownedShop?.id || user.managedShop?.id;
-      if (shop.id !== userShopId) {
+    // Check access: admin can see all, employee only their shop (temporary until shopIds is available)
+    if (!user.Role || !isAdmin(user.Role.name)) {
+      const managedShops = await prisma.shop.findMany({
+        where: { managerId: userPublicId },
+        select: { id: true }
+      });
+      const userShopIds = managedShops.map(shop => shop.id);
+      
+      if (!userShopIds.includes(shop.id)) {
         return res.status(403).json({ error: "Access denied to this shop" });
       }
     }
@@ -256,18 +417,16 @@ export const getShopById = async (
 export const updateShop = async (req: Request, res: Response): Promise<any> => {
   try {
     const { id } = req.params;
-    const userId = (req as any).user?.id;
-    const updateData = req.body;
-
-    if (!userId) {
+    const userPublicId = (req as any).user?.publicId;
+    
+    if (!userPublicId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { publicId: userPublicId },
       include: {
-        ownedShop: true,
-        managedShop: true,
+        Role: true,
       },
     });
 
@@ -275,48 +434,73 @@ export const updateShop = async (req: Request, res: Response): Promise<any> => {
       return res.status(401).json({ error: "User not found" });
     }
 
-    // Check access: admin can update any, employee only their shop
-    if (!user.role || !isAdmin(user.role)) {
-      const userShopId = user.ownedShop?.id || user.managedShop?.id;
-      if (id !== userShopId) {
+    // Check access: admin can update any, employee only their shop (temporary until shopIds is available)
+    if (!user.Role || !isAdmin(user.Role.name)) {
+      const managedShops = await prisma.shop.findMany({
+        where: { managerId: userPublicId },
+        select: { id: true }
+      });
+      const userShopIds = managedShops.map(shop => shop.id);
+      
+      if (!userShopIds.includes(id)) {
         return res.status(403).json({ error: "Access denied to this shop" });
       }
     }
 
-    // Validate ownerId and managerId if provided
-    if (updateData.ownerId) {
-      const owner = await prisma.user.findUnique({
-        where: { id: parseInt(updateData.ownerId) },
-      });
-      if (!owner || owner.role !== "employee") {
-        return res.status(400).json({ error: "Invalid owner ID" });
-      }
-    }
+    // Extract only valid shop fields from request body
+    const {
+      name,
+      address,
+      contactNumber,
+      email,
+      operatingHours,
+      description,
+      isActive,
+      managerId
+    } = req.body;
 
-    if (updateData.managerId) {
-      const manager = await prisma.user.findUnique({
-        where: { id: parseInt(updateData.managerId) },
-      });
-      if (!manager || manager.role !== "employee") {
-        return res.status(400).json({ error: "Invalid manager ID" });
+    // Create update data object with only defined values
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (address !== undefined) updateData.address = address;
+    if (contactNumber !== undefined) updateData.contactNumber = contactNumber;
+    if (email !== undefined) updateData.email = email;
+    if (operatingHours !== undefined) updateData.operatingHours = operatingHours;
+    if (description !== undefined) updateData.description = description;
+    if (isActive !== undefined) updateData.isActive = isActive;
+
+    // Validate and handle managerId if provided
+    if (managerId !== undefined) {
+      // Prevent managerId from being set to null - it must always be a valid publicId
+      if (!managerId || managerId === null) {
+        return res.status(400).json({ 
+          error: "managerId cannot be null or empty. It must be a valid user publicId." 
+        });
       }
+      
+      const manager = await prisma.user.findUnique({
+        where: { publicId: managerId },
+      });
+      if (!manager) {
+        return res.status(400).json({ error: "Invalid manager ID - user not found" });
+      }
+      
+      // Clear any previous management assignments for this user (due to unique constraint)
+      await prisma.shop.updateMany({
+        where: { managerId: managerId },
+        data: { managerId: null },
+      });
+      
+      updateData.managerId = managerId;
     }
 
     const shop = await prisma.shop.update({
       where: { id },
       data: updateData,
       include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            contact: true,
-          },
-        },
         manager: {
           select: {
-            id: true,
+            publicId: true,
             name: true,
             email: true,
             contact: true,
@@ -332,39 +516,38 @@ export const updateShop = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-// Delete shop (only admin, and only if no owner/manager linked)
+// Delete shop (only admin, and only if no manager linked)
 export const deleteShop = async (req: Request, res: Response): Promise<any> => {
   try {
     const { id } = req.params;
-    const userId = (req as any).user?.id;
+    const userPublicId = (req as any).user?.publicId;
 
-    if (!userId) {
+    if (!userPublicId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { role: true },
+      where: { publicId: userPublicId },
+      include: { Role: true },
     });
 
-    if (!user || !user.role || !isAdmin(user.role)) {
+    if (!user || !user.Role || !isAdmin(user.Role.name)) {
       return res.status(403).json({ error: "Admin access required" });
     }
 
-    // Check if shop has owner or manager
+    // Check if shop has manager
     const shop = await prisma.shop.findUnique({
       where: { id },
-      select: { ownerId: true, managerId: false },
+      select: { managerId: true },
     });
 
     if (!shop) {
       return res.status(404).json({ error: "Shop not found" });
     }
 
-    if (shop.ownerId) {
+    if (shop.managerId) {
       return res.status(400).json({
-        error:
-          "Cannot delete shop with linked owner or manager. Unlink them first.",
+        error: "Cannot delete shop with linked manager. Unlink them first.",
       });
     }
 
@@ -379,37 +562,37 @@ export const deleteShop = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-// Link/unlink shop owner
-export const linkShopOwner = async (
+// Link shop manager
+export const linkShopManager = async (
   req: Request,
   res: Response
 ): Promise<any> => {
   try {
-    const { shopId, userId } = req.body;
+    const { shopId, userPublicId } = req.body;
 
-    if (!shopId || !userId) {
+    if (!shopId || !userPublicId) {
       return res
         .status(400)
-        .json({ error: "Shop ID and User ID are required" });
+        .json({ error: "Shop ID and User Public ID are required" });
     }
 
     // Check if user is admin
     const currentUser = await prisma.user.findUnique({
-      where: { id: (req as any).user?.id },
-      select: { role: true },
+      where: { publicId: userPublicId },
+      include: { Role: true },
     });
 
-    if (!currentUser || !currentUser.role || !isAdmin(currentUser.role)) {
+    if (!currentUser || !currentUser.Role || !isAdmin(currentUser.Role.name)) {
       return res.status(403).json({ error: "Admin access required" });
     }
 
-    // Check if user exists and is employee
+    // Check if user exists
     const user = await prisma.user.findUnique({
-      where: { id: parseInt(userId) },
+      where: { publicId: userPublicId },
     });
 
-    if (!user || user.role !== "employee") {
-      return res.status(400).json({ error: "User must be an employee" });
+    if (!user) {
+      return res.status(400).json({ error: "User not found" });
     }
 
     // Check if shop exists
@@ -421,14 +604,14 @@ export const linkShopOwner = async (
       return res.status(404).json({ error: "Shop not found" });
     }
 
-    // Update shop with new owner
+    // Update shop with new manager
     const updatedShop = await prisma.shop.update({
       where: { id: shopId },
-      data: { ownerId: parseInt(userId) },
+      data: { managerId: userPublicId },
       include: {
-        owner: {
+        manager: {
           select: {
-            id: true,
+            publicId: true,
             name: true,
             email: true,
             contact: true,
@@ -437,15 +620,23 @@ export const linkShopOwner = async (
       },
     });
 
+    // Add shop ID to user's shopIds array
+    try {
+      await addShopIdToUser(userPublicId, shopId);
+      logger.info(`Added shop ID ${shopId} to user ${userPublicId}'s shopIds array`);
+    } catch (error) {
+      logger.error(`Failed to add shop ID to user's shopIds array:`, error);
+    }
+
     return res.status(200).json(updatedShop);
   } catch (error) {
-    logger.error("Error linking shop owner:", error);
-    return res.status(500).json({ error: "Failed to link shop owner" });
+    logger.error("Error linking shop manager:", error);
+    return res.status(500).json({ error: "Failed to link shop manager" });
   }
 };
 
-// Unlink shop owner
-export const unlinkShopOwner = async (
+// Unlink shop manager
+export const unlinkShopManager = async (
   req: Request,
   res: Response
 ): Promise<any> => {
@@ -454,11 +645,11 @@ export const unlinkShopOwner = async (
 
     // Check if user is admin
     const currentUser = await prisma.user.findUnique({
-      where: { id: (req as any).user?.id },
-      select: { role: true },
+      where: { publicId: (req as any).user?.publicId },
+      include: { Role: true },
     });
 
-    if (!currentUser || !currentUser.role || !isAdmin(currentUser.role)) {
+    if (!currentUser || !currentUser.Role || !isAdmin(currentUser.Role.name)) {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -471,14 +662,17 @@ export const unlinkShopOwner = async (
       return res.status(404).json({ error: "Shop not found" });
     }
 
-    // Remove owner link
+    // Get the current manager before removing
+    const currentManagerId = shop.managerId;
+    
+    // Remove manager link
     const updatedShop = await prisma.shop.update({
       where: { id: shopId },
-      data: { ownerId: null },
+      data: { managerId: null },
       include: {
-        owner: {
+        manager: {
           select: {
-            id: true,
+            publicId: true,
             name: true,
             email: true,
             contact: true,
@@ -487,9 +681,19 @@ export const unlinkShopOwner = async (
       },
     });
 
+    // Remove shop ID from user's shopIds array if there was a manager
+    if (currentManagerId) {
+      try {
+        await removeShopIdFromUser(currentManagerId, shopId);
+        logger.info(`Removed shop ID ${shopId} from user ${currentManagerId}'s shopIds array`);
+      } catch (error) {
+        logger.error(`Failed to remove shop ID from user's shopIds array:`, error);
+      }
+    }
+
     return res.status(200).json(updatedShop);
   } catch (error) {
-    logger.error("Error unlinking shop owner:", error);
-    return res.status(500).json({ error: "Failed to unlink shop owner" });
+    logger.error("Error unlinking shop manager:", error);
+    return res.status(500).json({ error: "Failed to unlink shop manager" });
   }
 };

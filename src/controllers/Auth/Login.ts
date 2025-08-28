@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { Response } from "express";
 import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import { prisma } from "../../config/client";
+import { emitUserNotification } from "../NotificationsController";
 import { logger } from "../../utils/logger";
 
 const generateToken = (
@@ -74,6 +75,8 @@ export const login = async (req: any, res: Response) => {
     });
 
     logger.auth.login(email, true);
+
+    // Login notifications removed - not needed for UI
 
     res.status(200).json({
       status: "success",
@@ -192,18 +195,7 @@ export const listUsers = async (_req: any, res: Response) => {
         roleId: true,
         contact: true,
         publicId: true,
-        ownedShop: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        managedShop: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        managedShops: true,
       },
       orderBy: { id: "asc" },
     });

@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,8 +11,8 @@ model Role {
   id          String           @id @default(uuid())
   name        String           @unique
   description String?
-  users       User[]
   permissions RolePermission[]
+  users       User[]
 }
 
 model Permission {
@@ -30,48 +27,45 @@ model Permission {
 
 model RolePermission {
   id           String     @id @default(uuid())
-  role         Role       @relation(fields: [roleId], references: [id])
   roleId       String
-  permission   Permission @relation(fields: [permissionId], references: [id])
   permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id])
 
   @@unique([roleId, permissionId])
 }
 
 model Shop {
-  id             String          @id @default(uuid())
-  name           String          @unique
-  description    String?
-  location       String?
-  address        String?
-  contactNumber  String?
-  email          String?
-  operatingHours String?
-  isActive       Boolean         @default(true)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  // Shop ownership/management relations
-  ownerId        Int?           @unique
-  owner          User?          @relation("ShopOwner", fields: [ownerId], references: [id])
-  managerId      Int?           @unique
-  manager        User?          @relation("ShopManager", fields: [managerId], references: [id])
-  // Inventory relations
-  inventory      ShopInventory[]
+  id              String           @id @default(uuid())
+  name            String           @unique
+  description     String?
+  address         String?
+  contactNumber   String?
+  email           String?
+  operatingHours  String?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  managerId       String?
+  billings        Billing[]
   restockRequests RestockRequest[]
+  manager         User?            @relation("ShopManager", fields: [managerId], references: [publicId])
+  inventory       ShopInventory[]
 }
 
 model User {
-  id          Int      @id @default(autoincrement())
-  publicId    String   @unique
-  name        String?
-  role        String?
-  roleId      String?
-  email       String?  @unique
-  contact     String?
-  password    String
-  Role        Role?    @relation(fields: [roleId], references: [id])
-  ownedShop   Shop?    @relation("ShopOwner")
-  managedShop Shop?    @relation("ShopManager")
+  id            Int            @id @default(autoincrement())
+  name          String?
+  role          String?
+  roleId        String?
+  email         String?        @unique
+  contact       String?
+  password      String
+  publicId      String         @unique
+  shopIds       String[]       @default([])
+  notifications Notification[]
+  managedShops  Shop[]         @relation("ShopManager")
+  Role          Role?          @relation(fields: [roleId], references: [id])
 }
 
 model Category {
@@ -95,42 +89,52 @@ model Flavor {
 }
 
 model Product {
-  id               String           @id @default(uuid())
-  sku              String           @unique
-  name             String
-  description      String?
-  categoryId       String
-  flavorId         String
-  packagingType    String?
-  quantityInLiters Float
-  unitSize         Float
-  unitMeasurement  String
-  unitPrice        Float
-  totalStock       Int
-  minStockLevel    Int?
-  barcode          String?
-  imageUrl         String?
-  isActive         Boolean          @default(true)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  // Relations
-  category         Category         @relation(fields: [categoryId], references: [id])
-  flavor           Flavor           @relation(fields: [flavorId], references: [id])
-  shopInventory    ShopInventory[]
-  restockRequests  RestockRequest[]
+  id                  String           @id @default(uuid())
+  sku                 String           @unique
+  name                String
+  description         String?
+  categoryId          String
+  flavorId            String
+  legacyPackagingType String?          @map("packagingType") @ignore
+  quantityInLiters    Float
+  unitSize            Float
+  unitMeasurement     String
+  unitPrice           Float
+  totalStock          Int
+  minStockLevel       Int?
+  barcode             String?
+  imageUrl            String?
+  isActive            Boolean          @default(true)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  packagingTypeId     String?
+  category            Category         @relation(fields: [categoryId], references: [id])
+  flavor              Flavor           @relation(fields: [flavorId], references: [id])
+  packagingType       PackagingType?   @relation(fields: [packagingTypeId], references: [id])
+  restockRequests     RestockRequest[]
+  shopInventory       ShopInventory[]
+}
+
+model PackagingType {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
+  products  Product[]
 }
 
 model ShopInventory {
-  id             String   @id @default(uuid())
-  shopId         String
-  productId      String
-  currentStock   Int
+  id              String    @id @default(uuid())
+  shopId          String
+  productId       String
+  currentStock    Int       @default(0)
   lastRestockDate DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  
-  shop          Shop    @relation(fields: [shopId], references: [id])
-  product       Product @relation(fields: [productId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  isActive        Boolean   @default(true)
+  product         Product   @relation(fields: [productId], references: [id])
+  shop            Shop      @relation(fields: [shopId], references: [id])
 
   @@unique([shopId, productId])
 }
@@ -142,9 +146,54 @@ model RestockRequest {
   requestedAmount Int
   status          String   @default("pending")
   notes           String?
+  hidden          Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  
-  shop           Shop    @relation(fields: [shopId], references: [id])
-  product        Product @relation(fields: [productId], references: [id])
+  product         Product  @relation(fields: [productId], references: [id])
+  shop            Shop     @relation(fields: [shopId], references: [id])
+}
+
+model Billing {
+  id            String   @id @default(uuid())
+  shopId        String
+  customerName  String?
+  customerEmail String?
+  items         Json
+  subtotal      Float
+  tax           Float    @default(0)
+  discount      Float    @default(0)
+  total         Float
+  paymentStatus String   @default("pending")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  createdByRole String?
+  invoiceNumber String?  @unique
+  shop          Shop     @relation(fields: [shopId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  type      String
+  message   String
+  isRead    Boolean  @default(false)
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [publicId])
+}
+
+model AuditLog {
+  id        String   @id
+  type      String
+  action    String
+  entity    String
+  entityId  String
+  userId    String?
+  shopId    String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([shopId])
 }

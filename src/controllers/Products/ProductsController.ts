@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { prisma } from "../../config/client";
 import { logger } from "../../utils/logger";
+import { emitUserNotification } from "../NotificationsController";
+import { logActivity } from "../../utils/audit";
 export const createProduct = async (req: Request, res: Response) => {
   try {
     const {
@@ -8,7 +10,7 @@ export const createProduct = async (req: Request, res: Response) => {
       name,
       description,
       categoryId,
-      packagingType,
+      packagingTypeId,
       quantityInLiters,
       unitSize,
       unitMeasurement,
@@ -32,6 +34,13 @@ export const createProduct = async (req: Request, res: Response) => {
     const flavor = await prisma.flavor.findUnique({
       where: { id: flavorId },
     });
+    // If packagingTypeId provided, validate exists
+    if (packagingTypeId) {
+      const pkg = await (prisma as any).packagingType.findUnique({ where: { id: packagingTypeId } });
+      if (!pkg) {
+        return res.status(400).json({ error: "Invalid packaging type ID" });
+      }
+    }
 
     if (!flavor) {
       return res.status(400).json({ error: "Invalid flavor ID" });
@@ -52,7 +61,7 @@ export const createProduct = async (req: Request, res: Response) => {
         name,
         description,
         categoryId,
-        packagingType,
+        packagingTypeId,
         quantityInLiters,
         unitSize,
         unitMeasurement,
@@ -62,7 +71,7 @@ export const createProduct = async (req: Request, res: Response) => {
         barcode,
         imageUrl,
         flavorId,
-      },
+      } as any,
       include: {
         category: true,
         flavor: true,
@@ -70,6 +79,38 @@ export const createProduct = async (req: Request, res: Response) => {
     });
 
     logger.controller.create("Product", { name: product.name, sku: product.sku });
+    await logActivity({
+      type: "product",
+      action: "created",
+      entity: "Product",
+      entityId: product.id,
+      userId: (req as any).user?.publicId,
+      meta: { name: product.name, sku: product.sku }
+    });
+    try {
+      const userId = (req as any).user?.publicId as string | undefined;
+      if (userId) {
+        const created = await prisma.notification.create({
+          data: {
+            userId,
+            type: "PRODUCT_CREATED",
+            message: `Created product ${product.name}`,
+          },
+        });
+        await emitUserNotification(userId.toString(), { event: "created", notification: created });
+        // Low stock notification on create
+        if (product.minStockLevel != null && product.totalStock <= product.minStockLevel) {
+          const low = await prisma.notification.create({
+            data: {
+              userId,
+              type: "LOW_STOCK",
+              message: `${product.name} is at or below minimum stock`,
+            },
+          });
+          await emitUserNotification(userId.toString(), { event: "created", notification: low });
+        }
+      }
+    } catch {}
     res.status(201).json(product);
   } catch (error) {
     logger.error("Error creating product:", error);
@@ -168,7 +209,7 @@ export const updateProduct = async (req: Request, res: Response) => {
       name,
       description,
       categoryId,
-      packagingType,
+      packagingTypeId,
       quantityInLiters,
       unitSize,
       unitMeasurement,
@@ -206,6 +247,13 @@ export const updateProduct = async (req: Request, res: Response) => {
       const flavor = await prisma.flavor.findUnique({
         where: { id: flavorId },
       });
+    // If packagingTypeId is provided, validate exists
+    if ((req.body as any).packagingTypeId) {
+      const pkg = await (prisma as any).packagingType.findUnique({ where: { id: (req.body as any).packagingTypeId } });
+      if (!pkg) {
+        return res.status(400).json({ error: "Invalid packaging type ID" });
+      }
+    }
 
       if (!flavor) {
         return res.status(400).json({ error: "Invalid flavor ID" });
@@ -230,7 +278,7 @@ export const updateProduct = async (req: Request, res: Response) => {
         name,
         description,
         categoryId,
-        packagingType,
+        packagingTypeId,
         quantityInLiters,
         unitSize,
         unitMeasurement,
@@ -241,7 +289,7 @@ export const updateProduct = async (req: Request, res: Response) => {
         imageUrl,
         flavorId,
         isActive,
-      },
+      } as any,
       include: {
         category: true,
         flavor: true,
@@ -249,6 +297,37 @@ export const updateProduct = async (req: Request, res: Response) => {
     });
 
     logger.controller.update("Product", product.id, { name: product.name });
+    await logActivity({
+      type: "product",
+      action: "updated",
+      entity: "Product",
+      entityId: product.id,
+      userId: (req as any).user?.publicId,
+      meta: { name: product.name }
+    });
+    try {
+      const userId = (req as any).user?.publicId as string | undefined;
+      if (userId) {
+        const updated = await prisma.notification.create({
+          data: {
+            userId,
+            type: "PRODUCT_UPDATED",
+            message: `Updated product ${product.name}`,
+          },
+        });
+        await emitUserNotification(userId.toString(), { event: "created", notification: updated });
+        if (product.minStockLevel != null && product.totalStock <= product.minStockLevel) {
+          const low = await prisma.notification.create({
+            data: {
+              userId,
+              type: "LOW_STOCK",
+              message: `${product.name} is at or below minimum stock`,
+            },
+          });
+          await emitUserNotification(userId.toString(), { event: "created", notification: low });
+        }
+      }
+    } catch {}
     res.json(product);
   } catch (error) {
     logger.error("Error updating product:", error);
