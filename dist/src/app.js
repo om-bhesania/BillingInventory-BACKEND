@@ -29,8 +29,8 @@ const swaggerConfig_1 = __importDefault(require("./swaggerConfig"));
 dotenv_1.default.config();
 // Initialize app
 const app = (0, express_1.default)();
-// Middlewares
-app.use((0, cors_1.default)({
+// CORS Configuration
+const corsOptions = {
     origin: (origin, callback) => {
         const allowed = [
             process.env.FRONTEND_ORIGIN || "http://localhost:5173",
@@ -39,18 +39,42 @@ app.use((0, cors_1.default)({
             "http://127.0.0.1:5173",
             "https://s3l06km6-5173.inc1.devtunnels.ms",
             "https://blizz.shreefood.co.in",
+            "https://blizz.shreefood.co.in/",
             "https://api.shreefood.co.in",
             "https://shreefood.co.in",
             "https://www.shreefood.co.in",
             "https://www.api.shreefood.co.in",
+            // Add common frontend domains
+            "https://bliss-frontend.onrender.com",
+            "https://bliss-client.onrender.com",
+            "https://bliss-app.onrender.com",
+            "https://bliss-frontend.vercel.app",
+            "https://bliss-client.vercel.app",
+            "https://bliss-app.vercel.app",
+            // Add any other frontend domains you're using
         ];
-        if (!origin || allowed.includes(origin)) {
+        // Log CORS requests for debugging
+        console.log(`[CORS] Request from origin: ${origin}`);
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) {
+            console.log(`[CORS] ✅ No origin - allowing request`);
             return callback(null, true);
         }
+        if (allowed.includes(origin)) {
+            console.log(`[CORS] ✅ Allowed origin: ${origin}`);
+            return callback(null, true);
+        }
+        console.log(`[CORS] ❌ Blocked origin: ${origin}`);
+        console.log(`[CORS] Allowed origins:`, allowed);
         return callback(null, false);
     },
     credentials: true,
-}));
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
+};
+// Middlewares
+app.use((0, cors_1.default)(corsOptions));
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
 app.use((0, cookie_parser_1.default)());
@@ -86,6 +110,15 @@ app.get("/swagger.json", (req, res) => {
  */
 app.get("/ping", (req, res) => {
     res.send("pong");
+});
+// CORS test endpoint
+app.get("/cors-test", (req, res) => {
+    res.json({
+        message: "CORS test successful",
+        origin: req.headers.origin,
+        timestamp: new Date().toISOString(),
+        cors: "working"
+    });
 });
 // Routes
 app.use("/api/auth", authRoutes_1.authRoutes);
