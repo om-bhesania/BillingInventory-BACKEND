@@ -53,7 +53,7 @@ const verifyJWT: RequestHandler = async (req, res, next) => {
 
     // Ensure shopIds is properly populated
     if (!user.shopIds) {
-      user.shopIds = "";
+      user.shopIds = [];
     }
 
     // Set the user object on the request with proper type casting
