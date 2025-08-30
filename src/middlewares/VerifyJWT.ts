@@ -1,9 +1,7 @@
 import { RequestHandler } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../services/prisma";
 import { AuthenticatedRequest } from "../types/models";
-
-const prisma = new PrismaClient();
 
 const verifyJWT: RequestHandler = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -53,7 +51,7 @@ const verifyJWT: RequestHandler = async (req, res, next) => {
 
     // Ensure shopIds is properly populated
     if (!user.shopIds) {
-      user.shopIds = [];
+      (user as any).shopIds = [];
     }
 
     // Set the user object on the request with proper type casting
