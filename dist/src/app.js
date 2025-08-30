@@ -38,7 +38,11 @@ app.use((0, cors_1.default)({
             "http://127.0.0.1:8080",
             "http://127.0.0.1:5173",
             "https://s3l06km6-5173.inc1.devtunnels.ms",
-            "https://blizz.shreefood.co.in"
+            "https://blizz.shreefood.co.in",
+            "https://api.shreefood.co.in",
+            "https://shreefood.co.in",
+            "https://www.shreefood.co.in",
+            "https://www.api.shreefood.co.in",
         ];
         if (!origin || allowed.includes(origin)) {
             return callback(null, true);
@@ -52,6 +56,7 @@ app.use(express_1.default.urlencoded({ extended: true }));
 app.use((0, cookie_parser_1.default)());
 // Swagger configuration
 app.use("/swagger", swagger_ui_express_1.default.serve, swagger_ui_express_1.default.setup(swaggerConfig_1.default));
+app.use("/api-docs", swagger_ui_express_1.default.serve, swagger_ui_express_1.default.setup(swaggerConfig_1.default));
 // Swagger JSON endpoint
 app.get("/swagger.json", (req, res) => {
     res.setHeader("Content-Type", "application/json");
