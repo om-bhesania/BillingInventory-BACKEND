@@ -20,6 +20,30 @@ const createShop = async (req, res) => {
                 required: ["name", "address", "contactNumber", "email", "operatingHours", "managerId"],
             });
         }
+        // Validate and clean shop name
+        const trimmedName = name.trim();
+        if (!trimmedName || trimmedName.length < 2) {
+            return res.status(400).json({
+                error: "Shop name must be at least 2 characters long",
+                field: "name"
+            });
+        }
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                error: "Please provide a valid email address",
+                field: "email"
+            });
+        }
+        // Validate contact number (basic validation)
+        const contactRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
+        if (!contactRegex.test(contactNumber)) {
+            return res.status(400).json({
+                error: "Please provide a valid contact number (at least 10 digits)",
+                field: "contactNumber"
+            });
+        }
         // Check if manager exists - managerId is now required
         const manager = await prisma.user.findUnique({
             where: { publicId: managerId },
@@ -27,9 +51,23 @@ const createShop = async (req, res) => {
         if (!manager) {
             return res.status(404).json({ error: "Manager not found" });
         }
+        // Check if a shop with the same name already exists
+        const existingShop = await prisma.shop.findFirst({
+            where: { name: trimmedName },
+        });
+        if (existingShop) {
+            return res.status(409).json({
+                error: "Shop with this name already exists",
+                existingShop: {
+                    id: existingShop.id,
+                    name: existingShop.name,
+                    address: existingShop.address
+                }
+            });
+        }
         const shop = await prisma.shop.create({
             data: {
-                name,
+                name: trimmedName,
                 description,
                 address,
                 contactNumber,
@@ -71,7 +109,29 @@ const createShop = async (req, res) => {
     }
     catch (error) {
         logger_1.logger.error("Error creating shop:", error);
-        return res.status(500).json({ error: "Failed to create shop" });
+        // Handle specific Prisma errors
+        if (error.code === 'P2002') {
+            const field = error.meta?.target?.[0];
+            if (field === 'name') {
+                return res.status(409).json({
+                    error: "Shop with this name already exists. Please choose a different name.",
+                    field: 'name'
+                });
+            }
+            return res.status(409).json({
+                error: `A shop with this ${field} already exists.`,
+                field: field
+            });
+        }
+        // Handle other Prisma errors
+        if (error.code && error.code.startsWith('P')) {
+            return res.status(400).json({
+                error: "Invalid data provided. Please check your input.",
+                details: error.message
+            });
+        }
+        console.log(error);
+        return res.status(500).json({ error: "Failed to create shop. Please try again later." });
     }
 };
 exports.createShop = createShop;

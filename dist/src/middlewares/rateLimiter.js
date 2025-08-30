@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.dashboardRateLimiter = exports.userRateLimiter = exports.lenientRateLimiter = exports.moderateRateLimiter = exports.strictRateLimiter = void 0;
+exports.dashboardRefreshRateLimiter = exports.dashboardRateLimiter = exports.userRateLimiter = exports.lenientRateLimiter = exports.moderateRateLimiter = exports.strictRateLimiter = void 0;
 exports.createRateLimiter = createRateLimiter;
 const logger_1 = require("../utils/logger");
 // Simple in-memory store for rate limiting
@@ -65,5 +65,15 @@ exports.dashboardRateLimiter = createRateLimiter({
         // Use user ID for user-specific rate limiting
         const user = req.user;
         return user ? `dashboard_${user.id}` : req.ip;
+    }
+});
+// Dashboard refresh rate limiter (allows refresh only once every 5 minutes)
+exports.dashboardRefreshRateLimiter = createRateLimiter({
+    maxRequests: 1, // 1 refresh per 5 minutes
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    keyGenerator: (req) => {
+        // Use user ID for user-specific rate limiting
+        const user = req.user;
+        return user ? `dashboard_refresh_${user.id}` : req.ip;
     }
 });

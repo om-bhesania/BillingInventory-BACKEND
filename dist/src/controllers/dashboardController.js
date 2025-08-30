@@ -15,42 +15,59 @@ class DashboardController {
             if (!user.role) {
                 return res.status(403).json({ error: 'User role not defined' });
             }
+            // Parse date range from query parameters
+            const fromDate = req.query.from ? new Date(req.query.from) : null;
+            const toDate = req.query.to ? new Date(req.query.to) : null;
+            // Default to last 7 days if no date range provided
+            let startDate = fromDate;
+            let endDate = toDate;
+            if (!startDate || !endDate) {
+                endDate = new Date();
+                startDate = new Date();
+                startDate.setDate(startDate.getDate() - 7);
+            }
             const isAdmin = user.role === 'Admin';
             // Get shop IDs from managedShops for Shop Owners
             const userShopIds = user.managedShops?.map(shop => shop.id) || [];
             if (isAdmin) {
                 // Admin metrics - all shops
-                const [totalRevenue, totalShops, totalProducts, totalCategories, pendingRestockRequests, shopPerformance, systemNotifications, bestCategory, bestFlavor, categoryBreakdown, flavorBreakdown, salesTrend] = await Promise.all([
-                    DashboardController.getTotalRevenue(),
-                    DashboardController.getTotalShops(),
-                    DashboardController.getTotalProducts(),
-                    DashboardController.getTotalCategories(),
-                    DashboardController.getPendingRestockRequests(),
-                    DashboardController.getShopPerformance(),
-                    DashboardController.getSystemNotifications(),
-                    DashboardController.getTopSellingCategory(),
-                    DashboardController.getTopSellingFlavor(),
-                    DashboardController.getCategoryBreakdown(),
-                    DashboardController.getFlavorBreakdown(),
-                    DashboardController.getSalesTrend()
-                ]);
-                return res.json({
-                    role: 'Admin',
-                    metrics: {
-                        totalRevenue,
-                        totalShops,
-                        totalProducts,
-                        totalCategories,
-                        pendingRestockRequests,
-                        shopPerformance,
-                        systemNotifications,
-                        bestCategory,
-                        bestFlavor,
-                        categoryBreakdown,
-                        flavorBreakdown,
-                        salesTrend
-                    }
-                });
+                try {
+                    const [totalRevenue, totalShops, totalProducts, totalCategories, pendingRestockRequests, shopPerformance, systemNotifications, bestCategory, bestFlavor, categoryBreakdown, flavorBreakdown, salesTrend] = await Promise.all([
+                        DashboardController.getTotalRevenue(startDate, endDate),
+                        DashboardController.getTotalShops(startDate, endDate),
+                        DashboardController.getTotalProducts(startDate, endDate),
+                        DashboardController.getTotalCategories(startDate, endDate),
+                        DashboardController.getPendingRestockRequests(),
+                        DashboardController.getShopPerformance(startDate, endDate),
+                        DashboardController.getSystemNotifications(),
+                        DashboardController.getTopSellingCategory(undefined, startDate, endDate),
+                        DashboardController.getTopSellingFlavor(undefined, startDate, endDate),
+                        DashboardController.getCategoryBreakdown(undefined, startDate, endDate),
+                        DashboardController.getFlavorBreakdown(undefined, startDate, endDate),
+                        DashboardController.getSalesTrend(undefined, startDate, endDate)
+                    ]);
+                    return res.json({
+                        role: 'Admin',
+                        metrics: {
+                            totalRevenue,
+                            totalShops,
+                            totalProducts,
+                            totalCategories,
+                            pendingRestockRequests,
+                            shopPerformance,
+                            systemNotifications,
+                            bestCategory,
+                            bestFlavor,
+                            categoryBreakdown,
+                            flavorBreakdown,
+                            salesTrend
+                        }
+                    });
+                }
+                catch (error) {
+                    console.error('Error fetching admin metrics:', error);
+                    return res.status(500).json({ error: 'Failed to fetch admin metrics' });
+                }
             }
             else {
                 // Shop Owner metrics - restricted to their shops
@@ -68,35 +85,41 @@ class DashboardController {
                         }
                     });
                 }
-                const [shopRevenue, topSellingProducts, currentStockLevels, pendingRestockRequests, shopNotifications, bestCategory, bestFlavor, categoryBreakdown, flavorBreakdown, salesTrend, restockExpenses] = await Promise.all([
-                    DashboardController.getShopRevenue(userShopIds),
-                    DashboardController.getTopSellingProducts(userShopIds),
-                    DashboardController.getCurrentStockLevels(userShopIds),
-                    DashboardController.getPendingRestockRequests(userShopIds),
-                    DashboardController.getShopNotifications(userShopIds),
-                    DashboardController.getTopSellingCategory(userShopIds),
-                    DashboardController.getTopSellingFlavor(userShopIds),
-                    DashboardController.getCategoryBreakdown(userShopIds),
-                    DashboardController.getFlavorBreakdown(userShopIds),
-                    DashboardController.getSalesTrend(userShopIds),
-                    DashboardController.getRestockExpenses(userShopIds)
-                ]);
-                return res.json({
-                    role: 'Shop_Owner',
-                    metrics: {
-                        shopRevenue,
-                        topSellingProducts,
-                        currentStockLevels,
-                        pendingRestockRequests,
-                        shopNotifications,
-                        bestCategory,
-                        bestFlavor,
-                        categoryBreakdown,
-                        flavorBreakdown,
-                        salesTrend,
-                        restockExpenses
-                    }
-                });
+                try {
+                    const [shopRevenue, topSellingProducts, currentStockLevels, pendingRestockRequests, shopNotifications, bestCategory, bestFlavor, categoryBreakdown, flavorBreakdown, salesTrend, restockExpenses] = await Promise.all([
+                        DashboardController.getShopRevenue(userShopIds, startDate, endDate),
+                        DashboardController.getTopSellingProducts(userShopIds, startDate, endDate),
+                        DashboardController.getCurrentStockLevels(userShopIds),
+                        DashboardController.getPendingRestockRequests(userShopIds),
+                        DashboardController.getShopNotifications(userShopIds),
+                        DashboardController.getTopSellingCategory(userShopIds, startDate, endDate),
+                        DashboardController.getTopSellingFlavor(userShopIds, startDate, endDate),
+                        DashboardController.getCategoryBreakdown(userShopIds, startDate, endDate),
+                        DashboardController.getFlavorBreakdown(userShopIds, startDate, endDate),
+                        DashboardController.getSalesTrend(userShopIds, startDate, endDate),
+                        DashboardController.getRestockExpenses(userShopIds, startDate, endDate)
+                    ]);
+                    return res.json({
+                        role: 'Shop_Owner',
+                        metrics: {
+                            shopRevenue,
+                            topSellingProducts,
+                            currentStockLevels,
+                            pendingRestockRequests,
+                            shopNotifications,
+                            bestCategory,
+                            bestFlavor,
+                            categoryBreakdown,
+                            flavorBreakdown,
+                            salesTrend,
+                            restockExpenses
+                        }
+                    });
+                }
+                catch (error) {
+                    console.error('Error fetching shop owner metrics:', error);
+                    return res.status(500).json({ error: 'Failed to fetch shop owner metrics' });
+                }
             }
         }
         catch (error) {
@@ -154,13 +177,15 @@ class DashboardController {
         }
     }
     // Admin-only methods
-    static async getTotalRevenue() {
+    static async getTotalRevenue(startDate, endDate) {
         // For Admin: Calculate revenue from fulfilled restock requests (when products are delivered)
         // This represents the revenue from selling products to shops
+        const whereClause = { status: "fulfilled" };
+        if (startDate && endDate) {
+            whereClause.updatedAt = { gte: startDate, lte: endDate };
+        }
         const fulfilledRestockRequests = await prisma.restockRequest.findMany({
-            where: {
-                status: "fulfilled"
-            },
+            where: whereClause,
             include: {
                 product: true
             }
@@ -171,62 +196,104 @@ class DashboardController {
             // Revenue = requested amount * product unit price
             currentRevenue += request.requestedAmount * request.product.unitPrice;
         }
-        // Calculate last month's revenue for growth calculation
-        const lastMonth = new Date();
-        lastMonth.setMonth(lastMonth.getMonth() - 1);
-        const lastMonthFulfilledRequests = await prisma.restockRequest.findMany({
-            where: {
-                status: "fulfilled",
-                updatedAt: { gte: lastMonth }
-            },
-            include: {
-                product: true
+        // Calculate previous period revenue for growth calculation
+        let previousPeriodRevenue = 0;
+        if (startDate && endDate) {
+            const periodDuration = endDate.getTime() - startDate.getTime();
+            const previousStartDate = new Date(startDate.getTime() - periodDuration);
+            const previousEndDate = new Date(startDate.getTime());
+            const previousPeriodRequests = await prisma.restockRequest.findMany({
+                where: {
+                    status: "fulfilled",
+                    updatedAt: { gte: previousStartDate, lte: previousEndDate }
+                },
+                include: {
+                    product: true
+                }
+            });
+            for (const request of previousPeriodRequests) {
+                previousPeriodRevenue += request.requestedAmount * request.product.unitPrice;
             }
-        });
-        let lastMonthRevenue = 0;
-        for (const request of lastMonthFulfilledRequests) {
-            lastMonthRevenue += request.requestedAmount * request.product.unitPrice;
         }
-        const growth = lastMonthRevenue > 0 ? ((currentRevenue - lastMonthRevenue) / lastMonthRevenue) * 100 : 0;
+        const growth = previousPeriodRevenue > 0 ? ((currentRevenue - previousPeriodRevenue) / previousPeriodRevenue) * 100 : 0;
         return {
             total: currentRevenue,
             count: fulfilledRestockRequests.length,
-            growth: Math.round(growth * 100) / 100
+            growth: Math.round(growth * 100) / 100,
+            previousPeriod: previousPeriodRevenue
         };
     }
-    static async getTotalShops() {
+    static async getTotalShops(startDate, endDate) {
         const result = await prisma.shop.aggregate({
             _count: { id: true },
             where: { isActive: true }
         });
-        const lastMonth = new Date();
-        lastMonth.setMonth(lastMonth.getMonth() - 1);
-        const lastMonthShops = await prisma.shop.count({
-            where: {
-                isActive: true,
-                createdAt: { lt: lastMonth }
-            }
-        });
+        // Calculate previous period data for trend analysis
+        let previousPeriodCount = 0;
+        if (startDate && endDate) {
+            const periodDuration = endDate.getTime() - startDate.getTime();
+            const previousStartDate = new Date(startDate.getTime() - periodDuration);
+            const previousEndDate = new Date(startDate.getTime());
+            previousPeriodCount = await prisma.shop.count({
+                where: {
+                    isActive: true,
+                    createdAt: { gte: previousStartDate, lte: previousEndDate }
+                }
+            });
+        }
         const currentShops = result._count.id;
-        const growth = lastMonthShops > 0 ? ((currentShops - lastMonthShops) / lastMonthShops) * 100 : 0;
+        const growth = previousPeriodCount > 0 ? ((currentShops - previousPeriodCount) / previousPeriodCount) * 100 : 0;
         return {
             total: currentShops,
-            growth: Math.round(growth * 100) / 100
+            growth: Math.round(growth * 100) / 100,
+            previousPeriod: previousPeriodCount
         };
     }
-    static async getTotalProducts() {
+    static async getTotalProducts(startDate, endDate) {
         const result = await prisma.product.aggregate({
             _count: { id: true },
             where: { isActive: true }
         });
-        return { total: result._count.id };
+        // Calculate previous period data for trend analysis
+        let previousPeriodCount = 0;
+        if (startDate && endDate) {
+            const periodDuration = endDate.getTime() - startDate.getTime();
+            const previousStartDate = new Date(startDate.getTime() - periodDuration);
+            const previousEndDate = new Date(startDate.getTime());
+            previousPeriodCount = await prisma.product.count({
+                where: {
+                    isActive: true,
+                    createdAt: { gte: previousStartDate, lte: previousEndDate }
+                }
+            });
+        }
+        return {
+            total: result._count.id,
+            previousPeriod: previousPeriodCount
+        };
     }
-    static async getTotalCategories() {
+    static async getTotalCategories(startDate, endDate) {
         const result = await prisma.category.aggregate({
             _count: { id: true },
             where: { isActive: true }
         });
-        return { total: result._count.id };
+        // Calculate previous period data for trend analysis
+        let previousPeriodCount = 0;
+        if (startDate && endDate) {
+            const periodDuration = endDate.getTime() - startDate.getTime();
+            const previousStartDate = new Date(startDate.getTime() - periodDuration);
+            const previousEndDate = new Date(startDate.getTime());
+            previousPeriodCount = await prisma.category.count({
+                where: {
+                    isActive: true,
+                    createdAt: { gte: previousStartDate, lte: previousEndDate }
+                }
+            });
+        }
+        return {
+            total: result._count.id,
+            previousPeriod: previousPeriodCount
+        };
     }
     static async getPendingRestockRequests(shopIds) {
         const whereClause = {
@@ -254,7 +321,7 @@ class DashboardController {
             requests: requests.slice(0, 10) // Limit to 10 for dashboard
         };
     }
-    static async getShopPerformance() {
+    static async getShopPerformance(startDate, endDate) {
         const shops = await prisma.shop.findMany({
             where: { isActive: true }
         });
@@ -262,11 +329,15 @@ class DashboardController {
         // This shows how much revenue each shop generates for the admin (from buying products)
         const shopPerformance = await Promise.all(shops.map(async (shop) => {
             // Get fulfilled restock requests for this shop
+            const whereClause = {
+                shopId: shop.id,
+                status: "fulfilled"
+            };
+            if (startDate && endDate) {
+                whereClause.updatedAt = { gte: startDate, lte: endDate };
+            }
             const fulfilledRequests = await prisma.restockRequest.findMany({
-                where: {
-                    shopId: shop.id,
-                    status: "fulfilled"
-                },
+                where: whereClause,
                 include: {
                     product: true
                 }
@@ -276,11 +347,33 @@ class DashboardController {
             for (const request of fulfilledRequests) {
                 totalRevenue += request.requestedAmount * request.product.unitPrice;
             }
+            // Calculate previous period revenue for trend analysis
+            let previousRevenue = 0;
+            if (startDate && endDate) {
+                const periodDuration = endDate.getTime() - startDate.getTime();
+                const previousStartDate = new Date(startDate.getTime() - periodDuration);
+                const previousEndDate = new Date(startDate.getTime());
+                const previousRequests = await prisma.restockRequest.findMany({
+                    where: {
+                        shopId: shop.id,
+                        status: "fulfilled",
+                        updatedAt: { gte: previousStartDate, lte: previousEndDate }
+                    },
+                    include: {
+                        product: true
+                    }
+                });
+                for (const request of previousRequests) {
+                    previousRevenue += request.requestedAmount * request.product.unitPrice;
+                }
+            }
             return {
                 id: shop.id,
                 name: shop.name,
                 totalRevenue,
-                orderCount: fulfilledRequests.length
+                orderCount: fulfilledRequests.length,
+                previousRevenue,
+                revenueGrowth: previousRevenue > 0 ? ((totalRevenue - previousRevenue) / previousRevenue) * 100 : 0
             };
         }));
         // Sort by revenue descending
@@ -299,40 +392,46 @@ class DashboardController {
         };
     }
     // Shop Owner methods
-    static async getShopRevenue(shopIds) {
+    static async getShopRevenue(shopIds, startDate, endDate) {
         // For Shop Owner: Calculate revenue from billing records (invoices created when selling to customers)
         // This shows the revenue from actual sales to customers
+        const whereClause = { shopId: { in: shopIds } };
+        if (startDate && endDate) {
+            whereClause.createdAt = { gte: startDate, lte: endDate };
+        }
         const billings = await prisma.billing.findMany({
-            where: {
-                shopId: { in: shopIds }
-            }
+            where: whereClause
         });
         // Calculate total revenue from billing records
         let currentRevenue = 0;
         for (const billing of billings) {
             currentRevenue += billing.total;
         }
-        // Calculate last month's revenue for growth calculation
-        const lastMonth = new Date();
-        lastMonth.setMonth(lastMonth.getMonth() - 1);
-        const lastMonthBillings = await prisma.billing.findMany({
-            where: {
-                shopId: { in: shopIds },
-                createdAt: { gte: lastMonth }
+        // Calculate previous period revenue for growth calculation
+        let previousPeriodRevenue = 0;
+        if (startDate && endDate) {
+            const periodDuration = endDate.getTime() - startDate.getTime();
+            const previousStartDate = new Date(startDate.getTime() - periodDuration);
+            const previousEndDate = new Date(startDate.getTime());
+            const previousPeriodBillings = await prisma.billing.findMany({
+                where: {
+                    shopId: { in: shopIds },
+                    createdAt: { gte: previousStartDate, lte: previousEndDate }
+                }
+            });
+            for (const billing of previousPeriodBillings) {
+                previousPeriodRevenue += billing.total;
             }
-        });
-        let lastMonthRevenue = 0;
-        for (const billing of lastMonthBillings) {
-            lastMonthRevenue += billing.total;
         }
-        const growth = lastMonthRevenue > 0 ? ((currentRevenue - lastMonthRevenue) / lastMonthRevenue) * 100 : 0;
+        const growth = previousPeriodRevenue > 0 ? ((currentRevenue - previousPeriodRevenue) / previousPeriodRevenue) * 100 : 0;
         return {
             total: currentRevenue,
             count: billings.length,
-            growth: Math.round(growth * 100) / 100
+            growth: Math.round(growth * 100) / 100,
+            previousPeriod: previousPeriodRevenue
         };
     }
-    static async getTopSellingProducts(shopIds) {
+    static async getTopSellingProducts(shopIds, startDate, endDate) {
         // For Shop Owner: Get top selling products from billing records (invoices)
         const billings = await prisma.billing.findMany({
             where: {
@@ -374,7 +473,7 @@ class DashboardController {
         });
     }
     // Get total amount spent on restocks per shop
-    static async getRestockExpenses(shopIds) {
+    static async getRestockExpenses(shopIds, startDate, endDate) {
         // Calculate total amount spent on fulfilled restock requests
         const fulfilledRequests = await prisma.restockRequest.findMany({
             where: {
@@ -396,7 +495,7 @@ class DashboardController {
             count: fulfilledRequests.length
         };
     }
-    static async getTopSellingCategory(shopIds) {
+    static async getTopSellingCategory(shopIds, startDate, endDate) {
         if (shopIds && shopIds.length > 0) {
             // For Shop Owner: Use billing data (existing logic)
             const billings = await prisma.billing.findMany({ where: { shopId: { in: shopIds } }, select: { items: true } });
@@ -445,7 +544,7 @@ class DashboardController {
             return best ? { name: best[0], quantity: best[1] } : null;
         }
     }
-    static async getTopSellingFlavor(shopIds) {
+    static async getTopSellingFlavor(shopIds, startDate, endDate) {
         if (shopIds && shopIds.length > 0) {
             // For Shop Owner: Use billing data (existing logic)
             const billings = await prisma.billing.findMany({ where: { shopId: { in: shopIds } }, select: { items: true } });
@@ -494,7 +593,7 @@ class DashboardController {
             return best ? { name: best[0], quantity: best[1] } : null;
         }
     }
-    static async getCategoryBreakdown(shopIds) {
+    static async getCategoryBreakdown(shopIds, startDate, endDate) {
         if (shopIds && shopIds.length > 0) {
             // For Shop Owner: Use billing data (existing logic)
             const billings = await prisma.billing.findMany({ where: { shopId: { in: shopIds } }, select: { items: true } });
@@ -537,7 +636,7 @@ class DashboardController {
             return Object.entries(categoryCount).map(([category, quantity]) => ({ category, quantity }));
         }
     }
-    static async getFlavorBreakdown(shopIds) {
+    static async getFlavorBreakdown(shopIds, startDate, endDate) {
         if (shopIds && shopIds.length > 0) {
             // For Shop Owner: Use billing data (existing logic)
             const billings = await prisma.billing.findMany({ where: { shopId: { in: shopIds } }, select: { items: true } });
@@ -580,7 +679,7 @@ class DashboardController {
             return Object.entries(flavorCount).map(([flavor, quantity]) => ({ flavor, quantity }));
         }
     }
-    static async getSalesTrend(shopIds) {
+    static async getSalesTrend(shopIds, startDate, endDate) {
         const since = new Date();
         since.setDate(since.getDate() - 30);
         if (shopIds && shopIds.length > 0) {

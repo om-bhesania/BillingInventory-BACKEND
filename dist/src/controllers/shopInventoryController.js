@@ -8,7 +8,7 @@ const NotificationsController_1 = require("./NotificationsController");
 // Create shop inventory entry
 const createShopInventory = async (req, res) => {
     try {
-        const { shopId, productId, currentStock = 0 } = req.body;
+        const { shopId, productId, currentStock = 0, minStockPerItem, lowStockAlertsEnabled, items } = req.body;
         const userId = req.user?.publicId;
         if (!userId) {
             res.status(401).json({ error: "Unauthorized" });
@@ -35,14 +35,81 @@ const createShopInventory = async (req, res) => {
             return res.status(403).json({ error: "User has no assigned shops" });
         }
         // Check if user has access to this shop
+        console.log("User role:", user.Role?.name, "User shop IDs:", userShopIds, "Requested shop ID:", shopId);
         if (!user.Role || (!(0, roles_1.isAdmin)(user.Role.name) && !userShopIds.includes(shopId))) {
             res.status(403).json({ error: "Access denied to this shop" });
             return;
         }
-        // Check if product exists
-        const product = await client_1.prisma.product.findUnique({
-            where: { id: productId },
-        });
+        // If bulk items provided, handle multiple creations
+        if (Array.isArray(items) && items.length > 0) {
+            console.log("Bulk creation requested:", { shopId, itemsCount: items.length });
+            const created = [];
+            for (const it of items) {
+                const { productId: pId, currentStock: cs = 0, minStockPerItem: ms, lowStockAlertsEnabled: alerts } = it || {};
+                // Validate product
+                const product = await client_1.prisma.product.findUnique({ where: { id: pId } });
+                if (!product) {
+                    continue; // skip invalid productId
+                }
+                const shop = await client_1.prisma.shop.findUnique({ where: { id: shopId } });
+                if (!shop) {
+                    continue;
+                }
+                // Check if inventory entry already exists
+                const existingInv = await client_1.prisma.shopInventory.findUnique({
+                    where: { shopId_productId: { shopId, productId: pId } },
+                    include: { shop: true, product: true },
+                });
+                let inv;
+                if (existingInv) {
+                    // Update existing entry
+                    inv = await client_1.prisma.shopInventory.update({
+                        where: { id: existingInv.id },
+                        data: {
+                            currentStock: cs,
+                            minStockPerItem: typeof ms === "number" ? ms : null,
+                            lowStockAlertsEnabled: alerts !== false,
+                            updatedAt: new Date(),
+                        },
+                        include: { shop: true, product: true },
+                    });
+                }
+                else {
+                    // Create new entry
+                    inv = await client_1.prisma.shopInventory.create({
+                        data: {
+                            shopId,
+                            productId: pId,
+                            currentStock: cs,
+                            minStockPerItem: typeof ms === "number" ? ms : null,
+                            lowStockAlertsEnabled: alerts !== false,
+                        },
+                        include: { shop: true, product: true },
+                    });
+                }
+                // Notifications based on thresholds
+                const threshold = inv.minStockPerItem ?? product.minStockLevel;
+                const alertsEnabled = inv.lowStockAlertsEnabled !== false;
+                if (alertsEnabled && threshold && cs <= threshold) {
+                    const notificationMessage = `Low stock alert: ${product.name} in ${shop.name} has only ${cs} units remaining (min: ${product.minStockLevel})`;
+                    if (shop.managerId) {
+                        await client_1.prisma.notification.create({
+                            data: { userId: shop.managerId, type: "LOW_STOCK_ALERT", message: notificationMessage },
+                        });
+                        (0, NotificationsController_1.emitUserNotification)(shop.managerId, {
+                            event: "low_stock_alert",
+                            notification: { type: "LOW_STOCK_ALERT", message: notificationMessage },
+                        });
+                    }
+                }
+                created.push(inv);
+            }
+            res.status(201).json({ createdCount: created.length, items: created });
+            return;
+        }
+        // Single item create: validate product
+        console.log("Single item creation:", { shopId, productId, currentStock, minStockPerItem, lowStockAlertsEnabled });
+        const product = await client_1.prisma.product.findUnique({ where: { id: productId } });
         if (!product) {
             res.status(404).json({ error: "Product not found" });
             return;
@@ -61,14 +128,19 @@ const createShopInventory = async (req, res) => {
                 shopId,
                 productId,
                 currentStock,
+                minStockPerItem: typeof minStockPerItem === "number" ? minStockPerItem : null,
+                lowStockAlertsEnabled: lowStockAlertsEnabled !== false,
             },
             include: {
                 shop: true,
                 product: true,
             },
         });
-        // Check if stock is low and trigger notification
-        if (product.minStockLevel && currentStock <= product.minStockLevel) {
+        // Check if stock is low and trigger notification (respect per-shop toggle and threshold)
+        // Use type assertion to bridge until Prisma types are regenerated
+        const threshold = shopInventory.minStockPerItem ?? product.minStockLevel;
+        const alertsEnabled = shopInventory.lowStockAlertsEnabled !== false;
+        if (alertsEnabled && threshold && currentStock <= threshold) {
             const notificationMessage = `Low stock alert: ${product.name} in ${shop.name} has only ${currentStock} units remaining (min: ${product.minStockLevel})`;
             // Notify shop manager
             if (shop.managerId) {
@@ -93,6 +165,7 @@ const createShopInventory = async (req, res) => {
     }
     catch (error) {
         logger_1.logger.error("Error creating shop inventory:", error);
+        console.log(error);
         res.status(500).json({ error: "Failed to create shop inventory" });
     }
 };
@@ -101,7 +174,7 @@ exports.createShopInventory = createShopInventory;
 const getShopInventory = async (req, res) => {
     try {
         const { shopId } = req.params;
-        const userId = req.user?.id;
+        const userId = req.user?.publicId;
         if (!userId) {
             res.status(401).json({ error: "Unauthorized" });
             return;
@@ -126,10 +199,12 @@ const getShopInventory = async (req, res) => {
             return res.status(403).json({ error: "User has no assigned shops" });
         }
         // Check if user has access to this shop
+        console.log("GET - User role:", user.Role?.name, "User shop IDs:", userShopIds, "Requested shop ID:", shopId);
         if (!user.Role || (!(0, roles_1.isAdmin)(user.Role.name) && !userShopIds.includes(shopId))) {
             res.status(403).json({ error: "Access denied to this shop" });
             return;
         }
+        console.log("Fetching inventory for shopId:", shopId);
         const inventory = await client_1.prisma.shopInventory.findMany({
             where: {
                 shopId,
@@ -145,9 +220,11 @@ const getShopInventory = async (req, res) => {
             },
             orderBy: { product: { name: "asc" } },
         });
+        console.log("Found inventory items:", inventory.length);
         res.status(200).json(inventory);
     }
     catch (error) {
+        console.log(error);
         logger_1.logger.error("Error fetching shop inventory:", error);
         res.status(500).json({ error: "Failed to fetch shop inventory" });
     }
@@ -211,8 +288,11 @@ const updateShopInventoryStock = async (req, res) => {
                 product: true,
             },
         });
-        // Check if stock is low and trigger notification
-        if (updatedInventory.product.minStockLevel && currentStock <= updatedInventory.product.minStockLevel) {
+        // Check if stock is low and trigger notification (respect per-shop toggle and threshold)
+        // Use type assertion to bridge until Prisma types are regenerated
+        const threshold = updatedInventory.minStockPerItem ?? updatedInventory.product.minStockLevel;
+        const alertsEnabled = updatedInventory.lowStockAlertsEnabled !== false;
+        if (alertsEnabled && threshold && currentStock <= threshold) {
             const notificationMessage = `Low stock alert: ${updatedInventory.product.name} in ${updatedInventory.shop.name} has only ${currentStock} units remaining (min: ${updatedInventory.product.minStockLevel})`;
             // Notify shop manager
             if (updatedInventory.shop.managerId) {
