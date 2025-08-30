@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model Role {
@@ -62,7 +62,7 @@ model User {
   contact       String?
   password      String
   publicId      String         @unique
-  shopIds       String[]       @default([])
+  shopIds       String         @default("")
   notifications Notification[]
   managedShops  Shop[]         @relation("ShopManager")
   Role          Role?          @relation(fields: [roleId], references: [id])

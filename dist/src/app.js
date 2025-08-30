@@ -38,6 +38,7 @@ app.use((0, cors_1.default)({
             "http://127.0.0.1:8080",
             "http://127.0.0.1:5173",
             "https://s3l06km6-5173.inc1.devtunnels.ms",
+            "https://blizz.shreefood.co.in"
         ];
         if (!origin || allowed.includes(origin)) {
             return callback(null, true);
