@@ -48,11 +48,19 @@ async function setupRoles() {
         description: `${action} ${module}`,
       }));
 
-      // Create permissions
-      const createdPermissions = await prisma.permission.createMany({
-        data: permissions,
-        skipDuplicates: true,
-      });
+      // Create permissions using upsert to handle duplicates
+      for (const permission of permissions) {
+        await prisma.permission.upsert({
+          where: {
+            action_resource: {
+              action: permission.action,
+              resource: permission.resource,
+            },
+          },
+          update: {},
+          create: permission,
+        });
+      }
 
       // Fetch created permissions
       const createdPermissionRecords = await prisma.permission.findMany({
@@ -81,11 +89,19 @@ async function setupRoles() {
         description: `${action} ${module}`,
       }));
 
-      // Create permissions
-      const createdPermissions = await prisma.permission.createMany({
-        data: permissions,
-        skipDuplicates: true,
-      });
+      // Create permissions using upsert to handle duplicates
+      for (const permission of permissions) {
+        await prisma.permission.upsert({
+          where: {
+            action_resource: {
+              action: permission.action,
+              resource: permission.resource,
+            },
+          },
+          update: {},
+          create: permission,
+        });
+      }
 
       // Fetch created permissions
       const createdPermissionRecords = await prisma.permission.findMany({

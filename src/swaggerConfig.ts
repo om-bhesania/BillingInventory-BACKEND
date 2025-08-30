@@ -6,9 +6,20 @@ const options = {
     info: {
       title: "Bliss Ice Cream Management System API",
       version: "1.0.0",
-      description: "Complete API documentation for the Bliss Ice Cream multi-shop management system. Includes authentication, user management, shop management, inventory, and billing operations.",
+      description:
+        "Complete API documentation for the Bliss Ice Cream multi-shop management system. Includes authentication, user management, shop management, inventory, and billing operations.",
     },
-    servers: [{ url: "http://localhost:5000" }],
+    servers: [
+      { url: "http://localhost:5000", description: "Local Development" },
+      {
+        url: "https://billinginventory-backend.onrender.com",
+        description: "Production - Render",
+      },
+      {
+        url: "https://api.shreefood.co.in",
+        description: "Production - Shree Food",
+      },
+    ],
     components: {
       securitySchemes: {
         bearerAuth: {
