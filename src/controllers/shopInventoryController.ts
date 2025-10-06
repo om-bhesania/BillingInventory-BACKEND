@@ -3,6 +3,7 @@ import { prisma } from "../config/client";
 import { logger } from "../utils/logger";
 import { isAdmin, isShopOwner } from "../config/roles";
 import { emitUserNotification } from "./NotificationsController";
+import { getSocketService } from "../services/socketService";
 
 // Create shop inventory entry
 export const createShopInventory = async (req: Request, res: Response): Promise<any> => {
@@ -96,18 +97,18 @@ export const createShopInventory = async (req: Request, res: Response): Promise<
         });
       }
 
-        // Notifications based on thresholds
+        // Notifications based on shop-specific thresholds
         const threshold = (inv as any).minStockPerItem ?? product.minStockLevel;
         const alertsEnabled = (inv as any).lowStockAlertsEnabled !== false;
         if (alertsEnabled && threshold && cs <= threshold) {
-          const notificationMessage = `Low stock alert: ${product.name} in ${shop.name} has only ${cs} units remaining (min: ${product.minStockLevel})`;
+          const notificationMessage = `Low stock alert: ${product.name} in ${shop.name} has only ${cs} units remaining (min: ${threshold})`;
           if (shop.managerId) {
             await prisma.notification.create({
-              data: { userId: shop.managerId, type: "LOW_STOCK_ALERT", message: notificationMessage },
+              data: { userId: shop.managerId, type: "CRITICAL", message: notificationMessage },
             });
             emitUserNotification(shop.managerId, {
               event: "low_stock_alert",
-              notification: { type: "LOW_STOCK_ALERT", message: notificationMessage },
+              notification: { type: "CRITICAL", message: notificationMessage },
             });
           }
         }
@@ -157,14 +158,14 @@ export const createShopInventory = async (req: Request, res: Response): Promise<
     const threshold = (shopInventory as any).minStockPerItem ?? product.minStockLevel;
     const alertsEnabled = (shopInventory as any).lowStockAlertsEnabled !== false;
     if (alertsEnabled && threshold && currentStock <= threshold) {
-      const notificationMessage = `Low stock alert: ${product.name} in ${shop.name} has only ${currentStock} units remaining (min: ${product.minStockLevel})`;
+      const notificationMessage = `🚨 Low stock alert: ${product.name} in ${shop.name} has only ${currentStock} units remaining (min: ${threshold})`;
       
       // Notify shop manager
       if (shop.managerId) {
         await prisma.notification.create({
           data: {
             userId: shop.managerId,
-            type: "LOW_STOCK_ALERT",
+            type: "CRITICAL",
             message: notificationMessage,
           },
         });
@@ -173,12 +174,20 @@ export const createShopInventory = async (req: Request, res: Response): Promise<
         emitUserNotification(shop.managerId, {
           event: "low_stock_alert",
           notification: {
-            type: "LOW_STOCK_ALERT",
+            type: "CRITICAL",
             message: notificationMessage,
           },
         });
       }
     }
+
+    // Broadcast real-time update
+    const socketService = getSocketService();
+    socketService.broadcastInventoryUpdate(shopId, {
+      type: 'created',
+      inventory: shopInventory,
+      timestamp: new Date().toISOString()
+    });
 
     res.status(201).json(shopInventory);
   } catch (error) {
@@ -328,14 +337,14 @@ export const updateShopInventoryStock = async (req: Request, res: Response): Pro
     const threshold = (updatedInventory as any).minStockPerItem ?? updatedInventory.product.minStockLevel;
     const alertsEnabled = (updatedInventory as any).lowStockAlertsEnabled !== false;
     if (alertsEnabled && threshold && currentStock <= threshold) {
-      const notificationMessage = `Low stock alert: ${updatedInventory.product.name} in ${updatedInventory.shop.name} has only ${currentStock} units remaining (min: ${updatedInventory.product.minStockLevel})`;
+      const notificationMessage = `🚨 Low stock alert: ${updatedInventory.product.name} in ${updatedInventory.shop.name} has only ${currentStock} units remaining (min: ${threshold})`;
       
       // Notify shop manager
       if (updatedInventory.shop.managerId) {
         await prisma.notification.create({
           data: {
             userId: updatedInventory.shop.managerId,
-            type: "LOW_STOCK_ALERT",
+            type: "CRITICAL",
             message: notificationMessage,
           },
         });
@@ -343,12 +352,20 @@ export const updateShopInventoryStock = async (req: Request, res: Response): Pro
         emitUserNotification(updatedInventory.shop.managerId, {
           event: "low_stock_alert",
           notification: {
-            type: "LOW_STOCK_ALERT",
+            type: "CRITICAL",
             message: notificationMessage,
           },
         });
       }
     }
+
+    // Broadcast real-time update
+    const socketService = getSocketService();
+    socketService.broadcastInventoryUpdate(updatedInventory.shopId, {
+      type: 'stock_updated',
+      inventory: updatedInventory,
+      timestamp: new Date().toISOString()
+    });
 
     res.status(200).json(updatedInventory);
   } catch (error) {

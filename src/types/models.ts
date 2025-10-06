@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { Request } from 'express';
 
 export interface Permission {
   id: string;
@@ -89,7 +90,19 @@ export type ProductWithRelations = Prisma.ProductGetPayload<{
 
 // Request with user
 export interface AuthenticatedRequest extends Request {
-  user?: UserWithRelations;
+  user?: {
+    id: string;
+    publicId: string;
+    name: string;
+    role: string;
+    roleId: string;
+    email: string;
+    contact: string;
+    ownedShop?: any;
+    shopIds?: string[];
+    managedShops?: any[];
+    Role?: any;
+  };
 }
 
 // Permission map type

@@ -295,11 +295,16 @@ const getAllRoles = async (req: Request, res: Response): Promise<void> => {
       };
     });
 
+    // Filter out Super_Admin role from the response
+    const filteredRoles = transformedRoles.filter(
+      (role) => role.name !== "Super_Admin" && role.name !== "Super Admin"
+    );
+
     console.log(
-      `Successfully transformed ${transformedRoles.length} roles`,
+      `Successfully transformed ${transformedRoles.length} roles (${filteredRoles.length} after filtering Super_Admin)`,
       greenBright("✓")
     );
-    res.status(200).json(transformedRoles);
+    res.status(200).json(filteredRoles);
   } catch (error) {
     console.error("Error fetching roles:", error);
     res.status(500).json({ message: "Failed to fetch roles" });

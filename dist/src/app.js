@@ -24,6 +24,18 @@ const dashboardRoutes_1 = __importDefault(require("./routes/dashboardRoutes"));
 const auditLogRoutes_1 = __importDefault(require("./routes/auditLogRoutes"));
 const lowStockRoutes_1 = __importDefault(require("./routes/lowStockRoutes"));
 const packagingTypeRoutes_1 = __importDefault(require("./routes/packagingTypeRoutes"));
+const employeeRoutes_1 = __importDefault(require("./routes/employeeRoutes"));
+const emailRoutes_1 = __importDefault(require("./routes/emailRoutes"));
+const searchRoutes_1 = __importDefault(require("./routes/searchRoutes"));
+const databaseRoutes_1 = __importDefault(require("./routes/databaseRoutes"));
+const cacheRoutes_1 = __importDefault(require("./routes/cacheRoutes"));
+const holidayRoutes_1 = __importDefault(require("./routes/holidayRoutes"));
+const enhancedAuditRoutes_1 = __importDefault(require("./routes/enhancedAuditRoutes"));
+const chatRoutes_1 = __importDefault(require("./routes/chatRoutes"));
+const chatRequestRoutes_1 = __importDefault(require("./routes/chatRequestRoutes"));
+const paymentRoutes_1 = __importDefault(require("./routes/paymentRoutes"));
+const stockAdjustmentRoutes_1 = __importDefault(require("./routes/stockAdjustmentRoutes"));
+const enhancedDashboardRoutes_1 = __importDefault(require("./routes/enhancedDashboardRoutes"));
 const swaggerConfig_1 = __importDefault(require("./swaggerConfig"));
 // Load environment variables
 dotenv_1.default.config();
@@ -51,6 +63,7 @@ const corsOptions = {
             "https://bliss-frontend.vercel.app",
             "https://bliss-client.vercel.app",
             "https://bliss-app.vercel.app",
+            "https://s3l06km6-5173.inc1.devtunnels.ms/",
             // Add any other frontend domains you're using
         ];
         // Log CORS requests for debugging
@@ -133,8 +146,20 @@ app.use("/api/billing", billingRoutes_1.default);
 app.use("/api/notifications", notificationRoutes_1.default);
 app.use("/api/dashboard", dashboardRoutes_1.default);
 app.use("/api/audit-log", auditLogRoutes_1.default);
+app.use("/api/audit", enhancedAuditRoutes_1.default);
+app.use("/api/chat", chatRoutes_1.default);
+app.use("/api/chat-requests", chatRequestRoutes_1.default);
+app.use("/api/payments", paymentRoutes_1.default);
+app.use("/api/stock-adjustments", stockAdjustmentRoutes_1.default);
 app.use("/api/low-stock", lowStockRoutes_1.default);
 app.use("/api/packaging-types", packagingTypeRoutes_1.default);
+app.use("/api/employees", employeeRoutes_1.default);
+app.use("/api/email", emailRoutes_1.default);
+app.use("/api/search", searchRoutes_1.default);
+app.use("/api/database", databaseRoutes_1.default);
+app.use("/api/cache", cacheRoutes_1.default);
+app.use("/api/holidays", holidayRoutes_1.default);
+app.use("/api/enhanced-dashboard", enhancedDashboardRoutes_1.default);
 app.use("/api/ping", PingRoute_1.default);
 // Global Error Handler
 app.use(errorHandlers_1.errorHandler);

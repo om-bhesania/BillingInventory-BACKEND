@@ -321,4 +321,77 @@ productRoutes.get("/flavor/:flavorId", ProductsController_1.getProductsByFlavor)
  *         description: Unauthorized
  */
 productRoutes.get("/low-stock", ProductsController_1.getLowStockProducts);
+/**
+ * @swagger
+ * /api/products/total-revenue:
+ *   get:
+ *     summary: Get total revenue from all shop billings
+ *     description: Calculate total revenue from all shop billings (Admin only)
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Total revenue calculated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalRevenue:
+ *                   type: number
+ *                   description: Total revenue from all shop billings
+ *                 totalProfit:
+ *                   type: number
+ *                   description: Total profit calculated
+ *                 totalBills:
+ *                   type: number
+ *                   description: Total number of bills
+ *                 revenueByShop:
+ *                   type: object
+ *                   description: Revenue breakdown by shop
+ *                 lastUpdated:
+ *                   type: string
+ *                   format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ */
+productRoutes.get("/total-revenue", ProductsController_1.getTotalRevenue);
+/**
+ * @swagger
+ * /api/products/total-items-worth:
+ *   get:
+ *     summary: Get total items worth from restock requests
+ *     description: Calculate total value of items sent to shops via restock requests (Admin only)
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Total items worth calculated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalItemsWorth:
+ *                   type: number
+ *                   description: Total value of items sent to shops
+ *                 totalRequests:
+ *                   type: number
+ *                   description: Total number of fulfilled restock requests
+ *                 itemsWorthByShop:
+ *                   type: object
+ *                   description: Items worth breakdown by shop
+ *                 lastUpdated:
+ *                   type: string
+ *                   format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ */
+productRoutes.get("/total-items-worth", ProductsController_1.getTotalItemsWorth);
 exports.default = productRoutes;

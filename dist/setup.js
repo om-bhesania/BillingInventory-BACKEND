@@ -21,11 +21,20 @@ try {
     console.log('🔄 Running: npx prisma generate');
     (0, child_process_1.execSync)('npx prisma generate', { stdio: 'inherit' });
     console.log('✅ Prisma client generated.');
-    console.log('🔄 Running: npx prisma migrate deploy');
-    (0, child_process_1.execSync)('npx prisma migrate deploy', { stdio: 'inherit' });
-    console.log('✅ Prisma migrations deployed.');
+    console.log('🔄 Running: npx prisma db push');
+    (0, child_process_1.execSync)('npx prisma db push', { stdio: 'inherit' });
+    console.log('✅ Database schema synced.');
+    console.log('🔄 Setting up roles and permissions...');
+    (0, child_process_1.execSync)('npx ts-node setupRoles.ts', { stdio: 'inherit' });
+    console.log('✅ Roles and permissions created.');
+    console.log('🔄 Seeding database with default data...');
+    (0, child_process_1.execSync)('npx ts-node src/scripts/seedDatabase.ts', { stdio: 'inherit' });
+    console.log('✅ Database seeded with default admin user.');
     console.log('🎉 Setup complete! You can now start the backend with:');
     console.log('   npm run dev');
+    console.log('\n🔑 Default Admin Login:');
+    console.log('   Email: bhesaniaom@gmail.com');
+    console.log('   Password: Password@123');
 }
 catch (err) {
     console.error('❌ Error during setup:', err);

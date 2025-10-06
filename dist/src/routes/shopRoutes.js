@@ -288,4 +288,159 @@ shopRoutes.put("/:id", shopControllers_1.updateShop);
  *         description: Shop not found
  */
 shopRoutes.delete("/:id", shopControllers_1.deleteShop);
+/**
+ * @swagger
+ * /api/shops/{id}/force:
+ *   delete:
+ *     summary: Force delete shop with all related data
+ *     tags: [Shops]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Shop ID
+ *     responses:
+ *       200:
+ *         description: Shop and all related data deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 deletedData:
+ *                   type: object
+ *                   properties:
+ *                     inventoryCount:
+ *                       type: number
+ *                     billingCount:
+ *                       type: number
+ *                     restockRequestCount:
+ *                       type: number
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Shop not found
+ *       500:
+ *         description: Failed to force delete shop
+ */
+shopRoutes.delete("/:id/force", shopControllers_1.forceDeleteShop);
+/**
+ * @swagger
+ * /api/shops/{id}/link-manager:
+ *   post:
+ *     summary: Link a manager to a shop
+ *     tags: [Shops]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Shop ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userPublicId:
+ *                 type: string
+ *                 description: User's public ID to assign as manager
+ *     responses:
+ *       200:
+ *         description: Manager linked successfully
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Shop or user not found
+ */
+shopRoutes.post("/:id/link-manager", shopControllers_1.linkShopManager);
+/**
+ * @swagger
+ * /api/shops/{id}/unlink-manager:
+ *   delete:
+ *     summary: Unlink manager from a shop
+ *     tags: [Shops]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Shop ID
+ *     responses:
+ *       200:
+ *         description: Manager unlinked successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Shop not found
+ */
+shopRoutes.delete("/:id/unlink-manager", shopControllers_1.unlinkShopManager);
+/**
+ * @swagger
+ * /shops/{id}/delete-all-data:
+ *   delete:
+ *     summary: Delete all shop data (Admin only)
+ *     description: Permanently deletes all data related to a shop including inventory, billing, restock requests, and the shop itself. Unlinks manager but preserves employee records.
+ *     tags: [Shops]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Shop ID
+ *     responses:
+ *       200:
+ *         description: All shop data deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 shopId:
+ *                   type: string
+ *                 deletedRecords:
+ *                   type: object
+ *                   properties:
+ *                     inventory:
+ *                       type: number
+ *                     restockRequests:
+ *                       type: number
+ *                     billings:
+ *                       type: number
+ *                     managerUnlinked:
+ *                       type: boolean
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Shop not found
+ *       500:
+ *         description: Internal server error
+ */
+shopRoutes.delete("/:id/delete-all-data", shopControllers_1.deleteAllShopData);
 exports.default = shopRoutes;

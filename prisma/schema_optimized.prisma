@@ -1,0 +1,290 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  relationMode = "prisma"
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  permissions RolePermission[]
+  users       User[]
+
+  @@index([name])
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  action      String
+  resource    String
+  description String?
+  roles       RolePermission[]
+
+  @@unique([action, resource])
+  @@index([action, resource])
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  role         Role       @relation(fields: [roleId], references: [id])
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model Shop {
+  id              String           @id @default(uuid())
+  name            String           @unique
+  description     String?
+  address         String?
+  contactNumber   String?
+  email           String?
+  operatingHours  String?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  managerId       String?
+  billings        Billing[]
+  restockRequests RestockRequest[]
+  manager         User?            @relation("ShopManager", fields: [managerId], references: [publicId])
+  inventory       ShopInventory[]
+
+  @@index([managerId])
+  @@index([isActive])
+  @@index([name])
+  @@index([createdAt])
+  @@index([name], map: "idx_shop_active_name", where: "isActive = true")
+}
+
+model User {
+  id            Int            @id @default(autoincrement())
+  name          String?
+  role          String?
+  roleId        String?
+  email         String?        @unique
+  contact       String?
+  password      String
+  publicId      String         @unique
+  shopIds       String[]       @default([])
+  notifications Notification[]
+  managedShops  Shop[]         @relation("ShopManager")
+  Role          Role?          @relation(fields: [roleId], references: [id])
+
+  @@index([publicId])
+  @@index([email])
+  @@index([role])
+  @@index([roleId])
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+
+  @@index([name])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model Flavor {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  imageUrl  String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+
+  @@index([name])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model Product {
+  id                  String           @id @default(uuid())
+  sku                 String           @unique
+  name                String
+  description         String?
+  categoryId          String
+  flavorId            String
+  legacyPackagingType String?          @map("packagingType") @ignore
+  quantityInLiters    Float
+  unitSize            Float
+  unitMeasurement     String
+  unitPrice           Float
+  totalStock          Int
+  minStockLevel       Int?
+  barcode             String?
+  imageUrl            String?
+  isActive            Boolean          @default(true)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  packagingTypeId     String?
+  category            Category         @relation(fields: [categoryId], references: [id])
+  flavor              Flavor           @relation(fields: [flavorId], references: [id])
+  packagingType       PackagingType?   @relation(fields: [packagingTypeId], references: [id])
+  restockRequests     RestockRequest[]
+  shopInventory       ShopInventory[]
+
+  @@index([sku])
+  @@index([name])
+  @@index([categoryId])
+  @@index([flavorId])
+  @@index([isActive])
+  @@index([packagingTypeId])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([categoryId, isActive])
+  @@index([flavorId, isActive])
+  @@index([name, isActive])
+  @@index([name], map: "idx_product_active_name", where: "isActive = true")
+}
+
+model PackagingType {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
+  products  Product[]
+
+  @@index([name])
+  @@index([isActive])
+}
+
+model ShopInventory {
+  id              String    @id @default(uuid())
+  shopId          String
+  productId       String
+  currentStock    Int       @default(0)
+  minStockPerItem Int?
+  lowStockAlertsEnabled Boolean @default(true)
+  lastRestockDate DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  isActive        Boolean   @default(true)
+  product         Product   @relation(fields: [productId], references: [id])
+  shop            Shop      @relation(fields: [shopId], references: [id])
+
+  @@unique([shopId, productId])
+  @@index([shopId])
+  @@index([productId])
+  @@index([isActive])
+  @@index([currentStock])
+  @@index([updatedAt])
+  @@index([lastRestockDate])
+  @@index([shopId, isActive])
+  @@index([productId, isActive])
+  @@index([currentStock, isActive])
+  @@index([shopId, currentStock])
+  @@index([currentStock], map: "idx_shop_inventory_active_stock", where: "isActive = true")
+}
+
+model RestockRequest {
+  id              String   @id @default(uuid())
+  shopId          String
+  productId       String
+  requestedAmount Int
+  status          String   @default("pending")
+  requestType     String   @default("RESTOCK") // RESTOCK | INVENTORY_ADD
+  notes           String?
+  hidden          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  product         Product  @relation(fields: [productId], references: [id])
+  shop            Shop     @relation(fields: [shopId], references: [id])
+
+  @@index([shopId])
+  @@index([productId])
+  @@index([status])
+  @@index([requestType])
+  @@index([hidden])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([shopId, status])
+  @@index([status, hidden])
+  @@index([shopId, hidden])
+  @@index([shopId, createdAt])
+  @@index([createdAt], map: "idx_restock_request_pending_created", where: "status = 'pending' AND hidden = false")
+}
+
+model Billing {
+  id            String   @id @default(uuid())
+  shopId        String
+  customerName  String?
+  customerEmail String?
+  items         Json
+  subtotal      Float
+  tax           Float    @default(0)
+  discount      Float    @default(0)
+  total         Float
+  paymentStatus String   @default("pending")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  createdByRole String?
+  invoiceNumber String?  @unique
+  shop          Shop     @relation(fields: [shopId], references: [id])
+
+  @@index([shopId])
+  @@index([paymentStatus])
+  @@index([invoiceNumber])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([createdBy])
+  @@index([customerName])
+  @@index([customerEmail])
+  @@index([shopId, createdAt])
+  @@index([shopId, paymentStatus])
+  @@index([paymentStatus, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  type      String
+  message   String
+  isRead    Boolean  @default(false)
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [publicId])
+
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([hidden])
+  @@index([createdAt])
+  @@index([userId, isRead])
+  @@index([userId, hidden])
+  @@index([userId, createdAt])
+  @@index([createdAt], map: "idx_notification_unread_created", where: "isRead = false AND hidden = false")
+}
+
+model AuditLog {
+  id        String   @id
+  type      String
+  action    String
+  entity    String
+  entityId  String
+  userId    String?
+  shopId    String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([shopId])
+}

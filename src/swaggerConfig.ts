@@ -1,11 +1,11 @@
 import swaggerJsDoc from "swagger-jsdoc";
 
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const NODE_ENV = process.env.NODE_ENV || "development";
 const PORT = process.env.PORT || 5000;
 
 // Define servers based on environment
 const getServers = () => {
-  if (NODE_ENV === 'production') {
+  if (NODE_ENV === "production") {
     return [
       {
         url: "https://api.shreefood.co.in",
@@ -17,7 +17,7 @@ const getServers = () => {
       },
     ];
   }
-  
+
   return [
     { url: `http://localhost:${PORT}`, description: "Local Development" },
     {

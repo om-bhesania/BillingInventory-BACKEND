@@ -101,6 +101,30 @@ class AuditLogController {
     // Admin methods
     static async getAllAuditEntries(whereClause, limit, offset) {
         const entries = [];
+        // Get detailed audit log entries from AuditLog table
+        const auditLogEntries = await prisma.auditLog.findMany({
+            where: whereClause,
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+            skip: offset
+        });
+        entries.push(...auditLogEntries.map(audit => ({
+            id: audit.id,
+            type: audit.type,
+            action: audit.action,
+            details: audit.metadata?.details || `${audit.action} ${audit.entity}`,
+            shopName: audit.shopId ? 'Shop Activity' : 'System Activity',
+            timestamp: audit.createdAt,
+            status: audit.metadata?.status || 'completed',
+            statusDisplay: audit.metadata?.statusDisplay || 'Completed',
+            // Enhanced information
+            performedBy: 'System', // Will be populated from user lookup if needed
+            entityId: audit.entityId,
+            entity: audit.entity,
+            meta: audit.metadata,
+            // Show detailed information based on type
+            detailedInfo: audit.metadata?.details || `${audit.action} ${audit.entity} by System`
+        })));
         // Get billing activities
         const billingEntries = await prisma.billing.findMany({
             where: whereClause,
@@ -115,9 +139,9 @@ class AuditLogController {
             id: billing.id,
             type: 'billing',
             action: 'Invoice Generated',
-            details: `Invoice #${billing.id.slice(0, 8)} for ${billing.shop.name}`,
+            details: `Invoice #${billing.id.slice(0, 8)} for ${billing.shop?.name || 'Factory Invoice'}`,
             amount: billing.total,
-            shopName: billing.shop.name,
+            shopName: billing.shop?.name || 'Factory Invoice',
             timestamp: billing.createdAt,
             status: billing.paymentStatus
         })));
@@ -139,7 +163,12 @@ class AuditLogController {
             details: `${restock.requestedAmount} units of ${restock.product.name}`,
             shopName: restock.shop.name,
             timestamp: restock.createdAt,
-            status: restock.status
+            status: restock.status,
+            // Enhanced status display
+            statusDisplay: restock.status === 'waiting_for_approval' ? 'Waiting for Approval' :
+                restock.status === 'approved_pending' ? 'Approved (Pending)' :
+                    restock.status === 'fulfilled' ? 'Fulfilled' :
+                        restock.status === 'rejected' ? 'Rejected' : restock.status
         })));
         // Get inventory update activities
         const inventoryEntries = await prisma.shopInventory.findMany({
@@ -159,7 +188,8 @@ class AuditLogController {
             details: `Stock level updated to ${inventory.currentStock} for ${inventory.product.name}`,
             shopName: inventory.shop.name,
             timestamp: inventory.updatedAt,
-            status: 'updated'
+            status: 'updated',
+            statusDisplay: 'Updated'
         })));
         // Get user activity (login/logout, role changes, etc.)
         const userEntries = await prisma.user.findMany({
@@ -180,13 +210,14 @@ class AuditLogController {
         return entries.slice(0, limit);
     }
     static async getAuditEntriesCount(whereClause) {
-        const [billingCount, restockCount, inventoryCount, userCount] = await Promise.all([
+        const [auditLogCount, billingCount, restockCount, inventoryCount, userCount] = await Promise.all([
+            prisma.auditLog.count({ where: whereClause }),
             prisma.billing.count({ where: whereClause }),
             prisma.restockRequest.count({ where: whereClause }),
             prisma.shopInventory.count({ where: whereClause }),
             prisma.user.count({ where: whereClause })
         ]);
-        return billingCount + restockCount + inventoryCount + userCount;
+        return auditLogCount + billingCount + restockCount + inventoryCount + userCount;
     }
     static async getAllAuditStats() {
         const today = new Date();
@@ -228,6 +259,39 @@ class AuditLogController {
     // Shop Owner methods
     static async getShopAuditEntries(shopIds, whereClause, limit, offset) {
         const entries = [];
+        // Get shop information for display
+        const shops = await prisma.shop.findMany({
+            where: { id: { in: shopIds } },
+            select: { id: true, name: true }
+        });
+        const shopMap = new Map(shops.map(shop => [shop.id, shop.name]));
+        // Get detailed audit log entries from AuditLog table for specific shops
+        const auditLogEntries = await prisma.auditLog.findMany({
+            where: {
+                ...whereClause,
+                shopId: { in: shopIds }
+            },
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+            skip: offset
+        });
+        entries.push(...auditLogEntries.map(audit => ({
+            id: audit.id,
+            type: audit.type,
+            action: audit.action,
+            details: audit.metadata?.details || `${audit.action} ${audit.entity}`,
+            shopName: audit.shopId ? shopMap.get(audit.shopId) || 'Unknown Shop' : 'System Activity',
+            timestamp: audit.createdAt,
+            status: audit.metadata?.status || 'completed',
+            statusDisplay: audit.metadata?.statusDisplay || 'Completed',
+            // Enhanced information
+            performedBy: audit.metadata?.actionPerformedBy || 'System',
+            entityId: audit.entityId,
+            entity: audit.entity,
+            meta: audit.metadata,
+            // Show detailed information based on type
+            detailedInfo: audit.metadata?.details || `${audit.action} ${audit.entity} by ${audit.metadata?.actionPerformedBy || 'System'}`
+        })));
         // Get billing activities for specific shops
         const billingEntries = await prisma.billing.findMany({
             where: {
@@ -245,10 +309,15 @@ class AuditLogController {
             id: billing.id,
             type: 'billing',
             action: 'Invoice Generated',
-            details: `Invoice #${billing.id.slice(0, 8)}`,
+            details: `Invoice #${billing.id.slice(0, 8)} for ${billing.shop?.name || 'Unknown Shop'}`,
             amount: billing.total,
+            shopName: billing.shop?.name || 'Unknown Shop',
             timestamp: billing.createdAt,
-            status: billing.paymentStatus
+            status: billing.paymentStatus,
+            statusDisplay: billing.paymentStatus === 'pending' ? 'Pending' :
+                billing.paymentStatus === 'paid' ? 'Paid' :
+                    billing.paymentStatus === 'failed' ? 'Failed' : billing.paymentStatus,
+            performedBy: billing.createdBy || 'System'
         })));
         // Get restock request activities for specific shops
         const restockEntries = await prisma.restockRequest.findMany({
@@ -257,7 +326,8 @@ class AuditLogController {
                 shopId: { in: shopIds }
             },
             include: {
-                product: true
+                product: true,
+                shop: true
             },
             orderBy: { createdAt: 'desc' },
             take: limit,
@@ -267,9 +337,15 @@ class AuditLogController {
             id: restock.id,
             type: 'restock',
             action: 'Restock Request',
-            details: `${restock.requestedAmount} units of ${restock.product.name}`,
+            details: `${restock.requestedAmount} units of ${restock.product.name} for ${restock.shop?.name || 'Unknown Shop'}`,
+            shopName: restock.shop?.name || 'Unknown Shop',
             timestamp: restock.createdAt,
-            status: restock.status
+            status: restock.status,
+            statusDisplay: restock.status === 'waiting_for_approval' ? 'Waiting for Approval' :
+                restock.status === 'approved_pending' ? 'Approved (Pending)' :
+                    restock.status === 'fulfilled' ? 'Fulfilled' :
+                        restock.status === 'rejected' ? 'Rejected' : restock.status,
+            performedBy: 'Shop Owner'
         })));
         // Get inventory update activities for specific shops
         const inventoryEntries = await prisma.shopInventory.findMany({
@@ -278,7 +354,8 @@ class AuditLogController {
                 shopId: { in: shopIds }
             },
             include: {
-                product: true
+                product: true,
+                shop: true
             },
             orderBy: { updatedAt: 'desc' },
             take: limit,
@@ -288,16 +365,22 @@ class AuditLogController {
             id: inventory.id,
             type: 'inventory',
             action: 'Stock Updated',
-            details: `Stock level updated to ${inventory.currentStock} for ${inventory.product.name}`,
+            details: `Stock level updated to ${inventory.currentStock} for ${inventory.product.name} in ${inventory.shop?.name || 'Unknown Shop'}`,
+            shopName: inventory.shop?.name || 'Unknown Shop',
             timestamp: inventory.updatedAt,
-            status: 'updated'
+            status: 'updated',
+            statusDisplay: 'Updated',
+            performedBy: 'Shop Owner'
         })));
         // Sort by timestamp and return
         entries.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
         return entries.slice(0, limit);
     }
     static async getShopAuditEntriesCount(shopIds, whereClause) {
-        const [billingCount, restockCount, inventoryCount] = await Promise.all([
+        const [auditLogCount, billingCount, restockCount, inventoryCount] = await Promise.all([
+            prisma.auditLog.count({
+                where: { ...whereClause, shopId: { in: shopIds } }
+            }),
             prisma.billing.count({
                 where: { ...whereClause, shopId: { in: shopIds } }
             }),
@@ -308,7 +391,7 @@ class AuditLogController {
                 where: { ...whereClause, shopId: { in: shopIds } }
             })
         ]);
-        return billingCount + restockCount + inventoryCount;
+        return auditLogCount + billingCount + restockCount + inventoryCount;
     }
     static async getShopAuditStats(shopIds) {
         const today = new Date();

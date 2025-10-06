@@ -9,6 +9,7 @@ export interface AuthenticatedUser {
   roleId: string | null;
   contact: string | null;
   shopIds: string[];
+  preferences: any | null;
   managedShops: Shop[];
   Role?: Role;
 }

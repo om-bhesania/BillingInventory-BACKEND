@@ -179,8 +179,10 @@ const getAllRoles = async (req, res) => {
                 updatedAt: role.updatedAt,
             };
         });
-        console.log(`Successfully transformed ${transformedRoles.length} roles`, (0, console_log_colors_1.greenBright)("✓"));
-        res.status(200).json(transformedRoles);
+        // Filter out Super_Admin role from the response
+        const filteredRoles = transformedRoles.filter((role) => role.name !== "Super_Admin" && role.name !== "Super Admin");
+        console.log(`Successfully transformed ${transformedRoles.length} roles (${filteredRoles.length} after filtering Super_Admin)`, (0, console_log_colors_1.greenBright)("✓"));
+        res.status(200).json(filteredRoles);
     }
     catch (error) {
         console.error("Error fetching roles:", error);

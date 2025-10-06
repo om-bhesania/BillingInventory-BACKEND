@@ -30,7 +30,7 @@ const createFlavor = async (req, res) => {
             entity: "Flavor",
             entityId: flavor.id,
             userId: req.user?.publicId,
-            meta: { name: flavor.name }
+            metadata: { name: flavor.name }
         });
     }
     catch (error) {

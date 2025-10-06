@@ -1,6 +1,6 @@
 import { RequestHandler, Router } from "express";
 import { register } from "../../controllers/Auth/Register";
-import { login, logout, refreshToken, listUsers, getRoles } from "../../controllers/Auth/Login";
+import { login, logout, refreshToken, listUsers, getRoles, deleteUser } from "../../controllers/Auth/Login";
 const authRoutes = Router();
 
 /**
@@ -195,5 +195,53 @@ authRoutes.get("/users", listUsers as RequestHandler);
  *         description: Internal server error
  */
 authRoutes.get("/roles", getRoles as RequestHandler);
+
+/**
+ * @swagger
+ * /api/auth/users/{publicId}:
+ *   delete:
+ *     summary: Delete a user
+ *     description: Delete a user by their public ID (Admin only)
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: publicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The public ID of the user to delete
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 deletedUser:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     publicId:
+ *                       type: string
+ *       400:
+ *         description: Bad request - Cannot delete yourself or user with managed shops
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
+ */
+authRoutes.delete("/users/:publicId", deleteUser as RequestHandler);
 
 export { authRoutes };

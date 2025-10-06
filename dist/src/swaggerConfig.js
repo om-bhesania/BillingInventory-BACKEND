@@ -4,11 +4,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const swagger_jsdoc_1 = __importDefault(require("swagger-jsdoc"));
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const NODE_ENV = process.env.NODE_ENV || "development";
 const PORT = process.env.PORT || 5000;
 // Define servers based on environment
 const getServers = () => {
-    if (NODE_ENV === 'production') {
+    if (NODE_ENV === "production") {
         return [
             {
                 url: "https://api.shreefood.co.in",

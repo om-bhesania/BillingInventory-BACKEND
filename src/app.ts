@@ -20,6 +20,18 @@ import dashboardRoutes from "./routes/dashboardRoutes";
 import auditLogRoutes from "./routes/auditLogRoutes";
 import lowStockRoutes from "./routes/lowStockRoutes";
 import packagingTypeRoutes from "./routes/packagingTypeRoutes";
+import employeeRoutes from "./routes/employeeRoutes";
+import emailRoutes from "./routes/emailRoutes";
+import searchRoutes from "./routes/searchRoutes";
+import databaseRoutes from "./routes/databaseRoutes";
+import cacheRoutes from "./routes/cacheRoutes";
+import holidayRoutes from "./routes/holidayRoutes";
+import enhancedAuditRoutes from "./routes/enhancedAuditRoutes";
+import chatRoutes from "./routes/chatRoutes";
+import chatRequestRoutes from "./routes/chatRequestRoutes";
+import paymentRoutes from "./routes/paymentRoutes";
+import stockAdjustmentRoutes from "./routes/stockAdjustmentRoutes";
+import enhancedDashboardRoutes from "./routes/enhancedDashboardRoutes";
 import swaggerSpecs from "./swaggerConfig";
 
 // Load environment variables
@@ -50,6 +62,7 @@ const corsOptions = {
       "https://bliss-frontend.vercel.app",
       "https://bliss-client.vercel.app",
       "https://bliss-app.vercel.app",
+      "https://s3l06km6-5173.inc1.devtunnels.ms/",
       // Add any other frontend domains you're using
     ];
     
@@ -143,8 +156,20 @@ app.use("/api/billing", billingRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/audit-log", auditLogRoutes);
+app.use("/api/audit", enhancedAuditRoutes);
+app.use("/api/chat", chatRoutes);
+app.use("/api/chat-requests", chatRequestRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/stock-adjustments", stockAdjustmentRoutes);
 app.use("/api/low-stock", lowStockRoutes);
 app.use("/api/packaging-types", packagingTypeRoutes);
+app.use("/api/employees", employeeRoutes);
+app.use("/api/email", emailRoutes);
+app.use("/api/search", searchRoutes);
+app.use("/api/database", databaseRoutes);
+app.use("/api/cache", cacheRoutes);
+app.use("/api/holidays", holidayRoutes);
+app.use("/api/enhanced-dashboard", enhancedDashboardRoutes);
 app.use("/api/ping", pingRouter);
 // Global Error Handler
 app.use(errorHandler);

@@ -3,13 +3,15 @@ import { prisma } from "../config/client";
 import { logger } from "../utils/logger";
 import { isAdmin, isShopOwner } from "../config/roles";
 import { emitUserNotification } from "./NotificationsController";
+import { getSocketService } from "../services/socketService";
 import { bgRedBright } from "console-log-colors";
-import { logActivity } from "../utils/audit";
+import { logActivity, AuditMeta } from "../utils/audit";
+import { updateFactoryStockWithNotifications } from "./Products/ProductsController";
 
 // Create restock request
 export const createRestockRequest = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { shopId, productId, requestedAmount, notes } = req.body;
+    const { shopId, productId, requestedAmount, notes, requestType = "RESTOCK" } = req.body;
     const userId = (req as any).user?.id;
 
     if (!userId) {
@@ -69,14 +71,15 @@ export const createRestockRequest = async (req: Request, res: Response): Promise
       return;
     }
 
-    // Create restock request
+    // Create restock request (supports RESTOCK and INVENTORY_ADD types)
     const restockRequest = await prisma.restockRequest.create({
       data: {
         shopId,
         productId,
         requestedAmount,
         notes,
-        status: "pending",
+        requestType,
+        status: "waiting_for_approval", // Changed from "pending" to "waiting_for_approval"
       },
       include: {
         shop: true,
@@ -85,29 +88,9 @@ export const createRestockRequest = async (req: Request, res: Response): Promise
     });
 
     // Create notification message
-    const notificationMessage = `Restock request: ${requestedAmount} units of ${product.name} requested for ${shop.name}`;
+    const isInventoryAdd = String(requestType).toUpperCase() === 'INVENTORY_ADD';
     
-    // Notify shop owner/manager
-    if (shop.managerId) {
-      await prisma.notification.create({
-        data: {
-          userId: shop.managerId,
-          type: "RESTOCK_REQUEST",
-          message: notificationMessage,
-        },
-      });
-
-      // Emit real-time notification
-      emitUserNotification(shop.managerId, {
-        event: "created",
-        notification: {
-          type: "RESTOCK_REQUEST",
-          message: notificationMessage,
-        },
-      });
-    }
-
-    // Notify all Admin users about the restock request
+    // Only notify Admin users about new restock requests (not the shop manager who created it)
     const adminUsers = await prisma.user.findMany({
       where: {
         role: "Admin"
@@ -118,27 +101,18 @@ export const createRestockRequest = async (req: Request, res: Response): Promise
     });
 
     for (const adminUser of adminUsers) {
-      const adminNotificationMessage = `New restock request from ${shop.name}: ${requestedAmount} units of ${product.name} requested by ${user.name || user.email}`;
+      const adminNotificationMessage = `📦 New restock request from ${shop.name}: ${requestedAmount} units of ${product.name} requested by ${user.name || user.email}`;
       
       await prisma.notification.create({
         data: {
           userId: adminUser.publicId,
-          type: "RESTOCK_REQUEST",
-          message: adminNotificationMessage,
-        },
-      });
-
-      // Emit real-time notification to admin
-      emitUserNotification(adminUser.publicId, {
-        event: "created",
-        notification: {
-          type: "RESTOCK_REQUEST",
+          type: "INFO",
           message: adminNotificationMessage,
         },
       });
     }
 
-    // Audit
+    // Enhanced Audit Logging
     await logActivity({
       type: "restock",
       action: "created",
@@ -146,7 +120,37 @@ export const createRestockRequest = async (req: Request, res: Response): Promise
       entityId: restockRequest.id,
       userId: (req as any).user?.publicId,
       shopId: shopId,
-      meta: { requestedAmount, productId }
+      metadata: { 
+        requestedAmount, 
+        productId,
+        productName: product.name,
+        shopName: shop.name,
+        requestType: requestType,
+        status: "waiting_for_approval",
+        actionPerformedBy: user.name || user.email || 'Unknown User',
+        actionTimestamp: new Date().toISOString(),
+        details: `New ${isInventoryAdd ? 'inventory add' : 'restock'} request created by ${user.name || user.email}. ${requestedAmount} units of ${product.name} for ${shop.name}. Status: waiting_for_approval.`
+      },
+      message: `New ${isInventoryAdd ? 'inventory add' : 'restock'} request created`,
+      status: "success"
+    });
+
+    // Emit consolidated real-time update
+    const socketService = getSocketService();
+    socketService.emitToAll('restock_request_created', {
+      event: 'restock_request_created',
+      notification: {
+        type: 'INFO',
+        message: `📦 New ${isInventoryAdd ? 'inventory add' : 'restock'} request from ${shop.name}: ${requestedAmount} units of ${product.name}`,
+        timestamp: new Date().toISOString(),
+        data: {
+          requestId: restockRequest.id,
+          shopId: shopId,
+          productName: product.name,
+          requestedAmount: requestedAmount,
+          requestType: requestType
+        }
+      }
     });
 
     res.status(201).json(restockRequest);
@@ -314,99 +318,73 @@ export const approveRestockRequest = async (req: Request, res: Response): Promis
       res.status(403).json({ error: "Access denied to this shop" });
     }
 
-    if (restockRequest.status !== "pending") {
-      res.status(400).json({ error: "Restock request is not pending" });
+    if (restockRequest.status !== "waiting_for_approval") {
+      res.status(400).json({ error: "Restock request is not waiting for approval" });
       return;
     }
 
-    // Approve request and move to in_transit (don't increment shop stock yet)
-    const updatedRequest = await prisma.restockRequest.update({
-      where: { id },
-      data: {
-        status: "in_transit",
-        updatedAt: new Date(),
-      },
-    });
-
-    // Decrement factory-level stock now (product.totalStock)
+    // Check factory stock availability before approval (but don't deduct yet)
     const product = await prisma.product.findUnique({ where: { id: restockRequest.productId } });
     if (!product) {
       res.status(404).json({ error: "Product not found" });
       return;
     }
+    
+    // Check if there's enough factory stock for the request (but don't deduct until fulfillment)
     if (product.totalStock < restockRequest.requestedAmount) {
       res.status(400).json({ error: `Insufficient factory stock for ${product.name}. Available: ${product.totalStock}, Requested: ${restockRequest.requestedAmount}` });
       return;
     }
-    await prisma.product.update({
-      where: { id: product.id },
+
+    // Approve request and move to approved_pending (don't deduct factory stock or increment shop stock yet)
+    const updatedRequest = await prisma.restockRequest.update({
+      where: { id },
       data: {
-        totalStock: {
-          decrement: restockRequest.requestedAmount,
-        },
+        status: "approved_pending", // Changed to approved_pending to show admin approved but pending fulfillment
+        approvedAt: new Date(),
         updatedAt: new Date(),
       },
     });
 
-    // Notify the user who created the request
-    const notificationMessage = `Restock request approved: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} added to ${restockRequest.shop.name}`;
+    // Notify shop owner/manager about approval
+    const notificationMessage = `✅ Restock request approved: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} added to ${restockRequest.shop.name}`;
     
-    // Find the user who created the request (this would need to be tracked in the schema)
-    // For now, we'll notify shop owner and manager
     if (restockRequest.shop.managerId) {
       await prisma.notification.create({
         data: {
           userId: restockRequest.shop.managerId,
-          type: "RESTOCK_REQUEST",
+          type: "INFO",
           message: notificationMessage,
         },
       });
     }
 
-    if (restockRequest.shop.managerId && restockRequest.shop.managerId !== restockRequest.shop.managerId) {
-      await prisma.notification.create({
+    // Emit consolidated real-time updates
+    const socketService = getSocketService();
+    
+    // Emit restock request approved event
+    socketService.emitToAll('restock_request_approved', {
+      event: 'restock_request_approved',
+      notification: {
+        type: 'INFO',
+        message: notificationMessage,
+        timestamp: new Date().toISOString(),
         data: {
-          userId: restockRequest.shop.managerId,
-          type: "RESTOCK_REQUEST",
-          message: notificationMessage,
-        },
-      });
-    }
-
-    // Notify all Admin users about the approved restock request
-    const adminUsers = await prisma.user.findMany({
-      where: {
-        role: "Admin"
-      },
-      select: {
-        publicId: true
+          requestId: updatedRequest.id,
+          shopId: restockRequest.shopId,
+          productName: restockRequest.product.name,
+          requestedAmount: restockRequest.requestedAmount,
+          status: 'in_transit'
+        }
       }
     });
 
-    for (const adminUser of adminUsers) {
-      const adminNotificationMessage = `Restock request approved: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} added to ${restockRequest.shop.name} by ${user.name || user.email}`;
-      
-      await prisma.notification.create({
-        data: {
-          userId: adminUser.publicId,
-          type: "RESTOCK_REQUEST",
-          message: adminNotificationMessage,
-        },
-      });
-
-      // Emit real-time notification to admin
-      emitUserNotification(adminUser.publicId, {
-        event: "approved",
-        notification: {
-          type: "RESTOCK_REQUEST",
-          message: adminNotificationMessage,
-        },
-      });
-    }
+    // Note: Factory stock is NOT deducted during approval - only during fulfillment
+    // This ensures stock is only reduced when items are actually delivered
 
     res.status(200).json(updatedRequest);
 
-    // Audit
+    // Enhanced Audit Logging
     await logActivity({
       type: "restock",
       action: "status_changed",
@@ -414,7 +392,18 @@ export const approveRestockRequest = async (req: Request, res: Response): Promis
       entityId: updatedRequest.id,
       userId: (req as any).user?.publicId,
       shopId: restockRequest.shopId,
-      meta: { status: updatedRequest.status }
+      metadata: { 
+        status: updatedRequest.status,
+        previousStatus: "waiting_for_approval",
+        productName: restockRequest.product.name,
+        requestedAmount: restockRequest.requestedAmount,
+        shopName: restockRequest.shop.name,
+        actionPerformedBy: user.name || user.email || 'Unknown User',
+        actionTimestamp: new Date().toISOString(),
+        details: `Restock request approved by ${user.name || user.email}. Status changed from 'waiting_for_approval' to 'approved_pending'. ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}.`
+      },
+      message: `Restock request approved`,
+      status: "success"
     });
   } catch (error) {
     logger.error("Error approving restock request:", error);
@@ -470,8 +459,8 @@ export const rejectRestockRequest = async (req: Request, res: Response): Promise
       res.status(403).json({ error: "Access denied to this shop" });
     }
 
-    if (restockRequest.status !== "pending") {
-      res.status(400).json({ error: "Restock request is not pending" });
+    if (restockRequest.status !== "waiting_for_approval") {
+      res.status(400).json({ error: "Restock request is not waiting for approval" });
       return;
     }
 
@@ -485,59 +474,38 @@ export const rejectRestockRequest = async (req: Request, res: Response): Promise
       },
     });
 
-    // Notify the user who created the request
-    const notificationMessage = `Restock request rejected: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}. Reason: ${notes || "No reason provided"}`;
+    // Notify shop owner/manager about rejection
+    const notificationMessage = `❌ Restock request declined: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}. Reason: ${notes || "No reason provided"}`;
     
-    // Notify shop owner/manager
     if (restockRequest.shop.managerId) {
       await prisma.notification.create({
         data: {
           userId: restockRequest.shop.managerId,
-          type: "RESTOCK_REQUEST",
-          message: notificationMessage,
-        },
-      });
-
-      // Emit real-time notification
-      emitUserNotification(restockRequest.shop.managerId, {
-        event: "rejected",
-        notification: {
-          type: "RESTOCK_REQUEST",
+          type: "WARNING",
           message: notificationMessage,
         },
       });
     }
 
-    // Notify all Admin users about the rejected restock request
-    const adminUsers = await prisma.user.findMany({
-      where: {
-        role: "Admin"
-      },
-      select: {
-        publicId: true
+    // Emit consolidated real-time update
+    const socketService = getSocketService();
+    socketService.emitToAll('restock_request_rejected', {
+      event: 'restock_request_rejected',
+      notification: {
+        type: 'WARNING',
+        message: notificationMessage,
+        timestamp: new Date().toISOString(),
+        data: {
+          requestId: updatedRequest.id,
+          shopId: restockRequest.shopId,
+          productName: restockRequest.product.name,
+          requestedAmount: restockRequest.requestedAmount,
+          status: 'rejected',
+          reason: notes || 'No reason provided'
+        }
       }
     });
 
-    for (const adminUser of adminUsers) {
-      const adminNotificationMessage = `Restock request rejected: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name} by ${user.name || user.email}. Reason: ${notes || "No reason provided"}`;
-      
-      await prisma.notification.create({
-        data: {
-          userId: adminUser.publicId,
-          type: "RESTOCK_REQUEST",
-          message: adminNotificationMessage,
-        },
-      });
-
-      // Emit real-time notification to admin
-      emitUserNotification(adminUser.publicId, {
-        event: "rejected",
-        notification: {
-          type: "RESTOCK_REQUEST",
-          message: adminNotificationMessage,
-        },
-      });
-    }
 
     res.status(200).json(updatedRequest);
   } catch (error) {
@@ -588,9 +556,17 @@ export const updateRestockRequestStatus = async (req: Request, res: Response): P
     }
 
     // Validate status transition
-    const validStatuses = ["pending", "accepted", "in_transit", "fulfilled", "rejected"];
+    const validStatuses = [
+      "waiting_for_approval", 
+      "pending", 
+      "approved", 
+      "in_transit", 
+      "fulfilled", 
+      "rejected", 
+      "cancelled"
+    ];
     if (!validStatuses.includes(status)) {
-      res.status(400).json({ error: "Invalid status. Must be one of: pending, accepted, in_transit, fulfilled, rejected" });
+      res.status(400).json({ error: "Invalid status. Must be one of: waiting_for_approval, pending, approved, in_transit, fulfilled, rejected, cancelled" });
       return;
     }
 
@@ -604,8 +580,50 @@ export const updateRestockRequestStatus = async (req: Request, res: Response): P
       },
     });
 
-    // If fulfilled via admin/status route, increment shop inventory just like markRestockRequestFulfilled
+    // Only update inventory when status is "fulfilled" - this is the only time inventory should be updated
+    let inventoryUpdateDetails = null;
+    let factoryStockUpdateDetails = null;
+    
     if (status === "fulfilled") {
+      // First, check and update factory stock (ProductsController)
+      const currentProduct = await prisma.product.findUnique({
+        where: { id: restockRequest.productId },
+        select: { id: true, name: true, totalStock: true }
+      });
+
+      if (!currentProduct) {
+        res.status(404).json({ error: "Product not found" });
+        return;
+      }
+
+      // Check if there's enough factory stock for the fulfillment
+      if (currentProduct.totalStock < restockRequest.requestedAmount) {
+        res.status(400).json({ 
+          error: `Insufficient factory stock for fulfillment. Available: ${currentProduct.totalStock}, Required: ${restockRequest.requestedAmount}` 
+        });
+        return;
+      }
+
+      // Deduct from factory stock on fulfillment using helper function
+      const updatedProduct = await updateFactoryStockWithNotifications(
+        restockRequest.productId,
+        -restockRequest.requestedAmount,
+        'restock_request_fulfilled',
+        {
+          requestId: updatedRequest.id,
+          shopId: restockRequest.shopId,
+          updatedBy: (req as any).user?.publicId
+        }
+      );
+
+      factoryStockUpdateDetails = {
+        previousStock: currentProduct.totalStock,
+        newStock: updatedProduct.totalStock,
+        stockDeducted: restockRequest.requestedAmount,
+        factoryStockUpdated: true
+      };
+
+      // Then update shop inventory
       const currentInventory = await prisma.shopInventory.findFirst({
         where: {
           shopId: restockRequest.shopId,
@@ -614,11 +632,14 @@ export const updateRestockRequestStatus = async (req: Request, res: Response): P
         },
       });
 
+      const previousStock = currentInventory?.currentStock || 0;
+      const newStock = previousStock + restockRequest.requestedAmount;
+
       if (currentInventory) {
         await prisma.shopInventory.update({
           where: { id: currentInventory.id },
           data: {
-            currentStock: currentInventory.currentStock + restockRequest.requestedAmount,
+            currentStock: newStock,
             lastRestockDate: new Date(),
             updatedAt: new Date(),
           },
@@ -633,9 +654,40 @@ export const updateRestockRequestStatus = async (req: Request, res: Response): P
           },
         });
       }
+
+      inventoryUpdateDetails = {
+        previousStock,
+        newStock,
+        stockAdded: restockRequest.requestedAmount,
+        inventoryUpdated: true
+      };
     }
 
-    // Audit
+    // Enhanced Audit Logging
+    const auditDetails: AuditMeta = {
+      productId: restockRequest.productId,
+      productName: restockRequest.product.name,
+      requestedAmount: restockRequest.requestedAmount,
+      shopName: restockRequest.shop.name,
+      status,
+      previousStatus: restockRequest.status,
+      actionPerformedBy: user.name || user.email || 'Unknown User',
+      actionTimestamp: new Date().toISOString(),
+      details: `Restock request status changed by ${user.name || user.email}. Status changed from '${restockRequest.status}' to '${status}'. ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}.`
+    };
+
+    // Add inventory update details if applicable
+    if (inventoryUpdateDetails) {
+      auditDetails.inventoryUpdate = inventoryUpdateDetails;
+      auditDetails.details += ` Inventory updated: Stock changed from ${inventoryUpdateDetails.previousStock} to ${inventoryUpdateDetails.newStock} (+${inventoryUpdateDetails.stockAdded}).`;
+    }
+
+    // Add factory stock update details if applicable
+    if (factoryStockUpdateDetails) {
+      auditDetails.factoryStockUpdate = factoryStockUpdateDetails;
+      auditDetails.details += ` Factory stock updated: Stock changed from ${factoryStockUpdateDetails.previousStock} to ${factoryStockUpdateDetails.newStock} (-${factoryStockUpdateDetails.stockDeducted}).`;
+    }
+
     await logActivity({
       type: "restock",
       action: "status_changed",
@@ -643,67 +695,104 @@ export const updateRestockRequestStatus = async (req: Request, res: Response): P
       entityId: updatedRequest.id,
       userId: (req as any).user?.publicId,
       shopId: restockRequest.shopId,
-      meta: { productId: restockRequest.productId, requestedAmount: restockRequest.requestedAmount, status }
+      metadata: auditDetails,
+      message: `Restock request status changed to ${status}`,
+      status: "success"
     });
 
     // Create notification message
     const statusMessages = {
-      accepted: `Restock request accepted: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}`,
-      in_transit: `Restock request in transit: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}`,
-      fulfilled: `Restock request fulfilled: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}`,
-      rejected: `Restock request rejected: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}. Reason: ${notes || "No reason provided"}`
+      waiting_for_approval: `New restock request created: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}`,
+      approved_pending: `Restock request approved by admin: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name} - pending fulfillment`,
+      fulfilled: `Restock request completed: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} delivered to ${restockRequest.shop.name}`,
+      rejected: `Restock request declined: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}. Reason: ${notes || "No reason provided"}`
     };
 
-    const notificationMessage = statusMessages[status as keyof typeof statusMessages] || `Restock request status updated to ${status}`;
+    const notificationMessage = statusMessages[status as keyof typeof statusMessages] || `Restock request status changed to ${status}: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name}`;
 
-    // Notify shop owner/manager
+    // Determine notification category based on status
+    const getNotificationCategory = (status: string) => {
+      switch (status) {
+        case 'pending':
+        case 'approved':
+        case 'fulfilled':
+          return 'INFO';
+        case 'rejected':
+          return 'WARNING';
+        case 'waiting_for_approval':
+          return 'INFO';
+        default:
+          return 'INFO';
+      }
+    };
+
+    const notificationCategory = getNotificationCategory(status);
+
+    // Only notify shop owner/manager about status updates (not the admin who made the change)
     if (restockRequest.shop.managerId) {
       await prisma.notification.create({
         data: {
           userId: restockRequest.shop.managerId,
-          type: "RESTOCK_REQUEST",
-          message: notificationMessage,
-        },
-      });
-
-      // Emit real-time notification
-      emitUserNotification(restockRequest.shop.managerId, {
-        event: "status_updated",
-        notification: {
-          type: "RESTOCK_REQUEST",
+          type: notificationCategory,
           message: notificationMessage,
         },
       });
     }
 
-    // Notify all Admin users about the status update
-    const adminUsers = await prisma.user.findMany({
-      where: {
-        role: "Admin"
-      },
-      select: {
-        publicId: true
+    // Emit single consolidated real-time update
+    const socketService = getSocketService();
+    socketService.emitToAll('restock_request_status_updated', {
+      event: 'restock_request_status_updated',
+      notification: {
+        type: notificationCategory,
+        message: notificationMessage,
+        timestamp: new Date().toISOString(),
+        data: {
+          requestId: updatedRequest.id,
+          shopId: restockRequest.shopId,
+          productName: restockRequest.product.name,
+          requestedAmount: restockRequest.requestedAmount,
+          status: status,
+          requestType: (restockRequest as any).requestType
+        }
       }
     });
 
-    for (const adminUser of adminUsers) {
-      const adminNotificationMessage = `Restock request status updated: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} for ${restockRequest.shop.name} - Status: ${status} by ${user.name || user.email}`;
-      
-      await prisma.notification.create({
-        data: {
-          userId: adminUser.publicId,
-          type: "RESTOCK_REQUEST",
-          message: adminNotificationMessage,
-        },
+    // Emit factory stock update if status is fulfilled
+    if (status === "fulfilled" && factoryStockUpdateDetails) {
+      // Emit inventory update event for real-time inventory view
+      socketService.emitToAll('inventory:update', {
+        event: 'inventory:update',
+        shopId: restockRequest.shopId,
+        productId: restockRequest.productId,
+        requestedAmount: restockRequest.requestedAmount,
+        action: 'restock_fulfilled',
+        newStock: inventoryUpdateDetails?.newStock || 0,
+        factoryStock: factoryStockUpdateDetails.newStock,
+        productName: restockRequest.product.name,
+        previousFactoryStock: factoryStockUpdateDetails.previousStock,
+        factoryStockChange: -restockRequest.requestedAmount,
+        timestamp: new Date().toISOString()
       });
 
-      // Emit real-time notification to admin
-      emitUserNotification(adminUser.publicId, {
-        event: "status_updated",
-        notification: {
-          type: "RESTOCK_REQUEST",
-          message: adminNotificationMessage,
-        },
+      // Emit factory stock update event for real-time factory stock tracking
+      socketService.broadcastFactoryStockUpdate({
+        event: 'factory_stock:update',
+        productId: restockRequest.productId,
+        productName: restockRequest.product.name,
+        action: 'stock_deducted',
+        deductedAmount: restockRequest.requestedAmount,
+        previousStock: factoryStockUpdateDetails.previousStock,
+        newStock: factoryStockUpdateDetails.newStock,
+        reason: 'restock_request_fulfilled',
+        requestId: updatedRequest.id,
+        shopId: restockRequest.shopId,
+        shopInventoryUpdate: inventoryUpdateDetails ? {
+          previousStock: inventoryUpdateDetails.previousStock,
+          newStock: inventoryUpdateDetails.newStock,
+          stockAdded: inventoryUpdateDetails.stockAdded
+        } : null,
+        timestamp: new Date().toISOString()
       });
     }
 
@@ -754,12 +843,12 @@ export const markRestockRequestFulfilled = async (req: Request, res: Response): 
       return;
     }
 
-    // Find the most recent pending restock request for this product and shop
+    // Find the most recent approved_pending restock request for this product and shop
     const restockRequest = await prisma.restockRequest.findFirst({
       where: {
         shopId,
         productId,
-        status: { in: ["pending", "accepted", "in_transit"] }
+        status: "approved_pending" // Only fulfill requests that are approved and pending
       },
       orderBy: { createdAt: "desc" },
       include: {
@@ -769,7 +858,7 @@ export const markRestockRequestFulfilled = async (req: Request, res: Response): 
     });
 
     if (!restockRequest) {
-      res.status(404).json({ error: "No pending restock request found for this product and shop" });
+      res.status(404).json({ error: "No approved restock request found for this product and shop" });
       return;
     }
 
@@ -778,9 +867,41 @@ export const markRestockRequestFulfilled = async (req: Request, res: Response): 
       where: { id: restockRequest.id },
       data: {
         status: "fulfilled",
+        fulfilledAt: new Date(),
         updatedAt: new Date(),
       },
     });
+
+    // Update factory stock on fulfillment (deduct from factory stock when actually delivered)
+    const currentProduct = await prisma.product.findUnique({
+      where: { id: restockRequest.productId },
+      select: { id: true, name: true, totalStock: true }
+    });
+
+    if (!currentProduct) {
+      res.status(404).json({ error: "Product not found" });
+      return;
+    }
+
+    // Check if there's enough factory stock for the fulfillment
+    if (currentProduct.totalStock < restockRequest.requestedAmount) {
+      res.status(400).json({ 
+        error: `Insufficient factory stock for fulfillment. Available: ${currentProduct.totalStock}, Required: ${restockRequest.requestedAmount}` 
+      });
+      return;
+    }
+
+    // Deduct from factory stock on fulfillment using helper function
+    const updatedProduct = await updateFactoryStockWithNotifications(
+      restockRequest.productId,
+      -restockRequest.requestedAmount,
+      'restock_request_fulfilled',
+      {
+        requestId: updatedRequest.id,
+        shopId: restockRequest.shopId,
+        updatedBy: user.publicId
+      }
+    );
 
     // Increment shop inventory on fulfillment
     const currentInventory = await prisma.shopInventory.findFirst({
@@ -790,8 +911,10 @@ export const markRestockRequestFulfilled = async (req: Request, res: Response): 
         isActive: true,
       },
     });
+    
+    let updatedInventory;
     if (currentInventory) {
-      await prisma.shopInventory.update({
+      updatedInventory = await prisma.shopInventory.update({
         where: { id: currentInventory.id },
         data: {
           currentStock: currentInventory.currentStock + restockRequest.requestedAmount,
@@ -800,7 +923,7 @@ export const markRestockRequestFulfilled = async (req: Request, res: Response): 
         },
       });
     } else {
-      await prisma.shopInventory.create({
+      updatedInventory = await prisma.shopInventory.create({
         data: {
           shopId,
           productId,
@@ -810,59 +933,115 @@ export const markRestockRequestFulfilled = async (req: Request, res: Response): 
       });
     }
 
+    // Enhanced Audit Logging for fulfillment
+    const previousShopStock = currentInventory?.currentStock || 0;
+    const newShopStock = updatedInventory?.currentStock || 0;
+    const previousFactoryStock = currentProduct.totalStock;
+    const newFactoryStock = updatedProduct.totalStock;
+    
+    await logActivity({
+      type: "restock",
+      action: "fulfilled",
+      entity: "RestockRequest",
+      entityId: updatedRequest.id,
+      userId: user.publicId,
+      shopId: restockRequest.shopId,
+      metadata: {
+        productId: restockRequest.productId,
+        productName: restockRequest.product.name,
+        requestedAmount: restockRequest.requestedAmount,
+        shopName: restockRequest.shop.name,
+        status: "fulfilled",
+        previousStatus: "approved_pending",
+        actionPerformedBy: user.name || user.email || 'Unknown User',
+        actionTimestamp: new Date().toISOString(),
+        shopInventoryUpdate: {
+          previousStock: previousShopStock,
+          newStock: newShopStock,
+          stockAdded: restockRequest.requestedAmount,
+          inventoryUpdated: true
+        },
+        factoryStockUpdate: {
+          previousStock: previousFactoryStock,
+          newStock: newFactoryStock,
+          stockDeducted: restockRequest.requestedAmount,
+          factoryStockUpdated: true
+        },
+        details: `Restock request fulfilled by ${user.name || user.email}. Status changed from 'approved_pending' to 'fulfilled'. ${restockRequest.requestedAmount} units of ${restockRequest.product.name} delivered to ${restockRequest.shop.name}. Shop inventory updated: ${previousShopStock} → ${newShopStock} (+${restockRequest.requestedAmount}). Factory stock updated: ${previousFactoryStock} → ${newFactoryStock} (-${restockRequest.requestedAmount}).`
+      },
+      message: `Restock request fulfilled with factory stock update`,
+      status: "success"
+    });
+
     // Create notification message
-    const notificationMessage = `Restock request fulfilled: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} received for ${restockRequest.shop.name}`;
+    const notificationMessage = `🎉 Restock request completed: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} delivered to ${restockRequest.shop.name}. Factory stock updated: ${previousFactoryStock} → ${newFactoryStock}`;
 
     // Notify shop owner/manager
     if (restockRequest.shop.managerId) {
       await prisma.notification.create({
         data: {
           userId: restockRequest.shop.managerId,
-          type: "RESTOCK_REQUEST",
-          message: notificationMessage,
-        },
-      });
-
-      // Emit real-time notification
-      emitUserNotification(restockRequest.shop.managerId, {
-        event: "fulfilled",
-        notification: {
-          type: "RESTOCK_REQUEST",
+          type: "INFO",
           message: notificationMessage,
         },
       });
     }
 
-    // Notify all Admin users
-    const adminUsers = await prisma.user.findMany({
-      where: {
-        role: "Admin"
-      },
-      select: {
-        publicId: true
+    // Emit consolidated real-time updates
+    const socketService = getSocketService();
+    
+    // Emit restock request fulfilled event
+    socketService.emitToAll('restock_request_fulfilled', {
+      event: 'restock_request_fulfilled',
+      notification: {
+        type: 'INFO',
+        message: notificationMessage,
+        timestamp: new Date().toISOString(),
+        data: {
+          requestId: updatedRequest.id,
+          shopId: restockRequest.shopId,
+          productName: restockRequest.product.name,
+          requestedAmount: restockRequest.requestedAmount,
+          status: 'fulfilled'
+        }
       }
     });
 
-    for (const adminUser of adminUsers) {
-      const adminNotificationMessage = `Restock request fulfilled: ${restockRequest.requestedAmount} units of ${restockRequest.product.name} received for ${restockRequest.shop.name} by ${user.name || user.email}`;
-      
-      await prisma.notification.create({
-        data: {
-          userId: adminUser.publicId,
-          type: "RESTOCK_REQUEST",
-          message: adminNotificationMessage,
-        },
-      });
+    // Emit inventory update event for real-time inventory view
+    socketService.emitToAll('inventory:update', {
+      event: 'inventory:update',
+      shopId: restockRequest.shopId,
+      productId: restockRequest.productId,
+      requestedAmount: restockRequest.requestedAmount,
+      action: 'restock_fulfilled',
+      newStock: updatedInventory?.currentStock || 0,
+      inventoryId: updatedInventory?.id,
+      factoryStock: updatedProduct.totalStock,
+      productName: updatedProduct.name,
+      previousFactoryStock: previousFactoryStock,
+      factoryStockChange: -restockRequest.requestedAmount,
+      timestamp: new Date().toISOString()
+    });
 
-      // Emit real-time notification to admin
-      emitUserNotification(adminUser.publicId, {
-        event: "fulfilled",
-        notification: {
-          type: "RESTOCK_REQUEST",
-          message: adminNotificationMessage,
-        },
-      });
-    }
+    // Emit factory stock update event for real-time factory stock tracking
+    socketService.broadcastFactoryStockUpdate({
+      event: 'factory_stock:update',
+      productId: restockRequest.productId,
+      productName: updatedProduct.name,
+      action: 'stock_deducted',
+      deductedAmount: restockRequest.requestedAmount,
+      previousStock: previousFactoryStock,
+      newStock: updatedProduct.totalStock,
+      reason: 'restock_request_fulfilled',
+      requestId: updatedRequest.id,
+      shopId: restockRequest.shopId,
+      shopInventoryUpdate: {
+        previousStock: previousShopStock,
+        newStock: newShopStock,
+        stockAdded: restockRequest.requestedAmount
+      },
+      timestamp: new Date().toISOString()
+    });
 
     res.status(200).json(updatedRequest);
   } catch (error) {
@@ -882,12 +1061,12 @@ export const autoGenerateRestockRequest = async (shopId: string, productId: stri
       return null;
     }
 
-    // Check if there's already a pending request
+    // Check if there's already a waiting for approval request
     const existingRequest = await prisma.restockRequest.findFirst({
       where: {
         shopId,
         productId,
-        status: "pending",
+        status: "waiting_for_approval",
       },
     });
 
@@ -902,7 +1081,7 @@ export const autoGenerateRestockRequest = async (shopId: string, productId: stri
         productId,
         requestedAmount: product.minStockLevel * 2, // Request 2x min stock level
         notes: "Auto-generated due to low stock",
-        status: "pending",
+        status: "waiting_for_approval", // Changed from "pending" to "waiting_for_approval"
       },
     });
 
@@ -914,24 +1093,16 @@ export const autoGenerateRestockRequest = async (shopId: string, productId: stri
     });
 
     if (shop?.managerId) {
-      const notificationMessage = `Auto restock request: ${restockRequest.requestedAmount} units of ${product.name} requested for ${shop.name} due to low stock (${currentStock}/${product.minStockLevel})`;
+      const notificationMessage = `⚠️ Auto restock request: ${restockRequest.requestedAmount} units of ${product.name} requested for ${shop.name} due to low stock (${currentStock}/${product.minStockLevel})`;
       
       await prisma.notification.create({
         data: {
           userId: shop.managerId,
-          type: "RESTOCK_REQUEST",
+          type: "WARNING",
           message: notificationMessage,
         },
       });
 
-      // Emit real-time notification
-      emitUserNotification(shop.managerId, {
-        event: "auto_generated",
-        notification: {
-          type: "RESTOCK_REQUEST",
-          message: notificationMessage,
-        },
-      });
     }
 
     // Notify all Admin users about the auto-generated restock request
@@ -945,25 +1116,37 @@ export const autoGenerateRestockRequest = async (shopId: string, productId: stri
     });
 
     for (const adminUser of adminUsers) {
-      const adminNotificationMessage = `Auto restock request generated: ${restockRequest.requestedAmount} units of ${product.name} requested for ${shop?.name || 'Unknown Shop'} due to low stock (${currentStock}/${product.minStockLevel})`;
+      const adminNotificationMessage = `⚠️ Auto restock request generated: ${restockRequest.requestedAmount} units of ${product.name} requested for ${shop?.name || 'Unknown Shop'} due to low stock (${currentStock}/${product.minStockLevel})`;
       
       await prisma.notification.create({
         data: {
           userId: adminUser.publicId,
-          type: "RESTOCK_REQUEST",
-          message: adminNotificationMessage,
-        },
-      });
-
-      // Emit real-time notification to admin
-      emitUserNotification(adminUser.publicId, {
-        event: "auto_generated",
-        notification: {
-          type: "RESTOCK_REQUEST",
+          type: "WARNING",
           message: adminNotificationMessage,
         },
       });
     }
+
+    // Emit consolidated real-time update for auto-generated request
+    const socketService = getSocketService();
+    socketService.emitToAll('restock_request_auto_generated', {
+      event: 'restock_request_auto_generated',
+      notification: {
+        type: 'WARNING',
+        message: `⚠️ Auto restock request generated: ${restockRequest.requestedAmount} units of ${product.name} due to low stock`,
+        timestamp: new Date().toISOString(),
+        data: {
+          requestId: restockRequest.id,
+          shopId: shopId,
+          productName: product.name,
+          requestedAmount: restockRequest.requestedAmount,
+          status: 'waiting_for_approval',
+          isAutoGenerated: true,
+          currentStock: currentStock,
+          minStockLevel: product.minStockLevel
+        }
+      }
+    });
 
     return restockRequest;
   } catch (error) {
@@ -1046,6 +1229,50 @@ export const softDeleteRestockRequest = async (req: Request, res: Response): Pro
         },
       });
     }
+
+    // Broadcast real-time update
+    const socketService = getSocketService();
+    socketService.broadcastRestockRequestUpdate({
+      type: 'hidden',
+      request: deletedRequest,
+      shopId: existingRequest.shopId,
+      status: 'hidden',
+      timestamp: new Date().toISOString()
+    });
+
+    // Emit specific restock request events
+    socketService.emitToAll('restock_request_hidden', {
+      event: 'restock_request_hidden',
+      notification: {
+        type: 'RESTOCK_REQUEST',
+        message: `Restock request hidden: ${existingRequest.requestedAmount} units of ${existingRequest.product.name}`,
+        timestamp: new Date().toISOString(),
+        data: {
+          requestId: deletedRequest.id,
+          shopId: existingRequest.shopId,
+          productName: existingRequest.product.name,
+          requestedAmount: existingRequest.requestedAmount,
+          status: 'hidden'
+        }
+      }
+    });
+
+    // Also emit as live notification
+    socketService.emitToAll('notification:new', {
+      event: 'restock_request_hidden',
+      notification: {
+        type: 'RESTOCK_REQUEST',
+        message: `Restock request hidden: ${existingRequest.requestedAmount} units of ${existingRequest.product.name}`,
+        timestamp: new Date().toISOString(),
+        data: {
+          requestId: deletedRequest.id,
+          shopId: existingRequest.shopId,
+          productName: existingRequest.product.name,
+          requestedAmount: existingRequest.requestedAmount,
+          status: 'hidden'
+        }
+      }
+    });
 
     res.status(200).json({ 
       message: "Restock request hidden successfully", 

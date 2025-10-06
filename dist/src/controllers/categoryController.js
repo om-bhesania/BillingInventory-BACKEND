@@ -26,7 +26,7 @@ const createCategory = async (req, res) => {
         res.status(201).json(category);
         await (0, audit_1.logActivity)({
             type: 'category', action: 'created', entity: 'Category', entityId: category.id,
-            userId: req.user?.publicId, meta: { name }
+            userId: req.user?.publicId, metadata: { name }
         });
     }
     catch (error) {

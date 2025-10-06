@@ -67,6 +67,9 @@ class BackendLogger {
             usersListed: (count) => {
                 console.log(console_log_colors_1.color.blue.bold(`${this.prefix} 👥 USERS LISTED: ${count} users retrieved`));
             },
+            userDeleted: (deletedUserId, deletedBy) => {
+                console.log(console_log_colors_1.color.red.bold(`${this.prefix} 🗑️ USER DELETED: User ${deletedUserId} deleted by ${deletedBy}`));
+            },
             rolesListed: (count) => {
                 console.log(console_log_colors_1.color.blue.bold(`${this.prefix} 🏷️ ROLES LISTED: ${count} roles retrieved`));
             }

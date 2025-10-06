@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_PERMISSIONS = exports.SHOP_OWNER_MODULE_PERMISSIONS = exports.ADMIN_MODULE_PERMISSIONS = exports.SYSTEM_MODULES = void 0;
+exports.DEFAULT_PERMISSIONS = exports.Outlet_Employee_MODULE_PERMISSIONS = exports.Factory_Employee_MODULE_PERMISSIONS = exports.SHOP_OWNER_MODULE_PERMISSIONS = exports.ADMIN_MODULE_PERMISSIONS = exports.SUPER_ADMIN_MODULE_PERMISSIONS = exports.SYSTEM_MODULES = void 0;
 exports.SYSTEM_MODULES = [
     "Inventory",
     "Billing",
@@ -13,7 +13,28 @@ exports.SYSTEM_MODULES = [
     "Dashboard",
     "Audit Log",
     "Low Stock Alerts",
+    "Search",
+    "Database Monitoring",
+    "Cache Management",
+    "Support",
 ];
+exports.SUPER_ADMIN_MODULE_PERMISSIONS = {
+    Inventory: ["read", "write", "update", "delete"],
+    Billing: ["read", "write", "update", "delete"],
+    Shop: ["read", "write", "update", "delete"],
+    Employee: ["read", "write", "update", "delete"],
+    Home: ["read"],
+    "Shop Inventory": ["read", "write", "update", "delete"],
+    "Restock Management": ["read", "write", "update", "delete"],
+    Notifications: ["read", "write", "update", "delete"],
+    Dashboard: ["read"],
+    "Audit Log": ["read"],
+    "Low Stock Alerts": ["read"],
+    Search: [],
+    "Database Monitoring": ["read", "write", "update", "delete"],
+    "Cache Management": ["read", "write", "update", "delete"],
+    Support: ["read", "write", "update", "delete"],
+};
 exports.ADMIN_MODULE_PERMISSIONS = {
     Inventory: ["read", "write", "update", "delete"],
     Billing: ["read", "write", "update", "delete"],
@@ -26,6 +47,10 @@ exports.ADMIN_MODULE_PERMISSIONS = {
     Dashboard: ["read"],
     "Audit Log": ["read"],
     "Low Stock Alerts": ["read"],
+    Search: [],
+    "Database Monitoring": [],
+    "Cache Management": [],
+    Support: ["read", "write", "update", "delete"],
 };
 exports.SHOP_OWNER_MODULE_PERMISSIONS = {
     Inventory: [],
@@ -37,10 +62,51 @@ exports.SHOP_OWNER_MODULE_PERMISSIONS = {
     "Restock Management": [],
     Notifications: ["read", "write", "update", "delete"],
     Dashboard: ["read"],
-    "Audit Log": ["read"],
+    "Audit Log": [],
     "Low Stock Alerts": ["read"],
+    Search: [],
+    "Database Monitoring": [],
+    "Cache Management": [],
+    Support: [],
+};
+exports.Factory_Employee_MODULE_PERMISSIONS = {
+    Inventory: ["read"],
+    Billing: [],
+    Shop: [],
+    Employee: [],
+    Home: ["read"],
+    "Shop Inventory": [],
+    "Restock Management": [],
+    Notifications: ["read"],
+    Dashboard: [],
+    "Audit Log": [],
+    "Low Stock Alerts": [],
+    Search: [],
+    "Database Monitoring": [],
+    "Cache Management": [],
+    Support: [],
+};
+exports.Outlet_Employee_MODULE_PERMISSIONS = {
+    Inventory: [],
+    Billing: ["read", "write"],
+    Shop: [],
+    Employee: [],
+    Home: ["read"],
+    "Shop Inventory": ["read"],
+    "Restock Management": [],
+    Notifications: ["read"],
+    Dashboard: [],
+    "Audit Log": [],
+    "Low Stock Alerts": [],
+    Search: [],
+    "Database Monitoring": [],
+    "Cache Management": [],
+    Support: [],
 };
 exports.DEFAULT_PERMISSIONS = {
     Admin: exports.ADMIN_MODULE_PERMISSIONS,
     Shop_Owner: exports.SHOP_OWNER_MODULE_PERMISSIONS,
+    Super_Admin: exports.SUPER_ADMIN_MODULE_PERMISSIONS,
+    Factory_Employee: exports.Factory_Employee_MODULE_PERMISSIONS,
+    Outlet_Employee: exports.Outlet_Employee_MODULE_PERMISSIONS,
 };

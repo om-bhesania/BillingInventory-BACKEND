@@ -38,36 +38,46 @@ model RolePermission {
 }
 
 model Shop {
-  id              String           @id @default(uuid())
-  name            String           @unique
-  description     String?
-  address         String?
-  contactNumber   String?
-  email           String?
-  operatingHours  String?
-  isActive        Boolean          @default(true)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  managerId       String?
-  billings        Billing[]
-  restockRequests RestockRequest[]
-  manager         User?            @relation("ShopManager", fields: [managerId], references: [publicId])
-  inventory       ShopInventory[]
+  id                    String                    @id @default(uuid())
+  name                  String                    @unique
+  description           String?
+  address               String?
+  contactNumber         String?
+  email                 String?
+  operatingHours        String?
+  isActive              Boolean                   @default(true)
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  managerId             String?
+  billings              Billing[]
+  restockRequests       RestockRequest[]
+  manager               User?                     @relation("ShopManager", fields: [managerId], references: [publicId])
+  inventory             ShopInventory[]
+  financials            ShopFinancials?
+  stockTransactions     StockTransaction[]
+  stockAdjustments      StockAdjustmentRequest[]
+  holidays              Holiday[]
 }
 
 model User {
-  id            Int            @id @default(autoincrement())
-  name          String?
-  role          String?
-  roleId        String?
-  email         String?        @unique
-  contact       String?
-  password      String
-  publicId      String         @unique
-  shopIds       String[]       @default([])
-  notifications Notification[]
-  managedShops  Shop[]         @relation("ShopManager")
-  Role          Role?          @relation(fields: [roleId], references: [id])
+  id                    Int            @id @default(autoincrement())
+  name                  String?
+  role                  String?
+  roleId                String?
+  email                 String?        @unique
+  contact               String?
+  password              String
+  publicId              String         @unique
+  shopIds               String[]       @default([])
+  preferences           Json?          @default("{}")
+  notifications         Notification[]
+  managedShops          Shop[]         @relation("ShopManager")
+  Role                  Role?          @relation(fields: [roleId], references: [id])
+  chatRequestsAsOwner   ChatRequest[]  @relation("ChatRequestShopOwner")
+  chatRequestsAsAdmin   ChatRequest[]  @relation("ChatRequestAdmin")
+  holidays              Holiday[]      @relation("HolidayCreatedBy")
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 }
 
 model Category {
@@ -102,6 +112,8 @@ model Product {
   unitSize            Float
   unitMeasurement     String
   unitPrice           Float
+  costPrice           Float?
+  retailPrice         Float?
   totalStock          Int
   minStockLevel       Int?
   barcode             String?
@@ -115,6 +127,8 @@ model Product {
   packagingType       PackagingType?   @relation(fields: [packagingTypeId], references: [id])
   restockRequests     RestockRequest[]
   shopInventory       ShopInventory[]
+  stockTransactions   StockTransaction[]
+  stockAdjustments    StockAdjustmentRequest[]
 }
 
 model PackagingType {
@@ -149,17 +163,33 @@ model RestockRequest {
   productId       String
   requestedAmount Int
   status          String   @default("pending")
+  requestType     String   @default("RESTOCK") // RESTOCK | INVENTORY_ADD
   notes           String?
   hidden          Boolean  @default(false)
+  paymentMethod   String?  // upfront, credit
+  paymentStatus   String   @default("pending") // pending, paid, verified, rejected
+  receiptPath     String?  // Path to uploaded receipt
+  totalAmount     Decimal? @db.Decimal(10, 2)
+  discountCode    String?  // Applied discount code
+  discountAmount  Decimal? @db.Decimal(10, 2)
+  finalAmount     Decimal? @db.Decimal(10, 2)
+  approvedAt      DateTime?
+  fulfilledAt     DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   product         Product  @relation(fields: [productId], references: [id])
   shop            Shop     @relation(fields: [shopId], references: [id])
+
+  @@index([shopId])
+  @@index([productId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt(sort: Desc)])
 }
 
 model Billing {
   id            String   @id @default(uuid())
-  shopId        String
+  shopId        String?
   customerName  String?
   customerEmail String?
   items         Json
@@ -173,31 +203,271 @@ model Billing {
   createdBy     String?
   createdByRole String?
   invoiceNumber String?  @unique
-  shop          Shop     @relation(fields: [shopId], references: [id])
+  invoiceType   String   @default("SHOP") // SHOP | FACTORY
+  shop          Shop?    @relation(fields: [shopId], references: [id])
 }
 
 model Notification {
-  id        String   @id @default(uuid())
-  type      String
-  message   String
-  isRead    Boolean  @default(false)
-  hidden    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  userId    String
-  user      User     @relation(fields: [userId], references: [publicId])
+  id         String   @id @default(uuid())
+  type       String
+  category   String   @default("SYSTEM") // INVENTORY, BILLING, RESTOCK, SYSTEM, CHAT, FACTORY
+  message    String
+  isRead     Boolean  @default(false)
+  hidden     Boolean  @default(false)
+  priority   String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  metadata   Json?    // Additional data for the notification
+  createdAt  DateTime @default(now())
+  userId     String
+  user       User     @relation(fields: [userId], references: [publicId])
 }
 
 model AuditLog {
-  id        String   @id
-  type      String
-  action    String
-  entity    String
-  entityId  String
-  userId    String?
-  shopId    String?
-  meta      Json?
-  createdAt DateTime @default(now())
+  id            String    @id @default(uuid())
+  type          String    // security, business, system, user, data, api
+  action        String
+  entity        String
+  entityId      String?
+  userId        String?
+  userRole      String?
+  shopId        String?
+  ipAddress     String?
+  userAgent     String?
+  sessionId     String?
+  severity      String    // low, medium, high, critical
+  status        String    // success, failure, warning, info
+  message       String
+  details       Json?
+  metadata      Json?
+  timestamp     DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Security-specific fields
+  threatLevel   String?   // low, medium, high, critical
+  attackType    String?   // brute_force, injection, xss, csrf, ddos, etc.
+  sourceIp      String?
+  targetResource String?
+  blocked       Boolean?  @default(false)
+  mitigationAction String?
+
+  // Business-specific fields
+  businessImpact    String?  // low, medium, high, critical
+  financialImpact   Float?
+  customerImpact    String?  // none, low, medium, high
+  operationalImpact String?  // none, low, medium, high
+
+  // System-specific fields
+  component     String?
+  operation     String?
+  performance   Json?    // responseTime, memoryUsage, cpuUsage, diskUsage
+  errorCode     String?
+  stackTrace    String?
+
+  // User-specific fields
+  userAction    String?
+  targetUser    String?
+  permission    String?
+  resource      String?
+  outcome       String?  // success, failure, denied
+
+  // Data-specific fields
+  dataType      String?  // create, read, update, delete, export, import
+  dataSensitivity String? // public, internal, confidential, restricted
+  dataVolume    Int?
+  dataRetention Int?
+  compliance    String[] // array of compliance standards
+
+  // API-specific fields
+  endpoint      String?
+  method        String?
+  statusCode    Int?
+  responseTime  Int?
+  requestSize   Int?
+  responseSize  Int?
+  rateLimited   Boolean? @default(false)
+  authenticated Boolean? @default(false)
 
   @@index([createdAt(sort: Desc)])
+  @@index([type])
+  @@index([severity])
+  @@index([userId])
   @@index([shopId])
+  @@index([ipAddress])
+  @@index([timestamp])
+  @@index([threatLevel])
+  @@index([attackType])
+  @@index([endpoint])
+  @@index([statusCode])
+}
+
+model ChatRequest {
+  id          String   @id @default(uuid())
+  shopOwnerId String   // User who initiated the request
+  adminId     String?  // Admin who is handling the request
+  status      String   @default("pending") // pending, active, closed
+  priority    String   @default("normal") // low, normal, high, urgent
+  subject     String?  // Optional subject line
+  lastMessage String?  // Last message content
+  lastMessageAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  shopOwner   User     @relation("ChatRequestShopOwner", fields: [shopOwnerId], references: [publicId])
+  admin       User?    @relation("ChatRequestAdmin", fields: [adminId], references: [publicId])
+  messages    ChatMessage[]
+
+  @@index([status])
+  @@index([shopOwnerId])
+  @@index([adminId])
+  @@index([createdAt(sort: Desc)])
+}
+
+model ChatMessage {
+  id            String      @id @default(uuid())
+  userId        String
+  room          String
+  message       String
+  isRead        Boolean     @default(false)
+  timestamp     DateTime    @default(now())
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  chatRequestId String?     // Link to chat request
+  chatRequest   ChatRequest? @relation(fields: [chatRequestId], references: [id])
+
+  @@index([room])
+  @@index([timestamp(sort: Desc)])
+  @@index([userId])
+  @@index([isRead])
+  @@index([chatRequestId])
+}
+
+// Financial tracking for shops
+model ShopFinancials {
+  id                String   @id @default(uuid())
+  shopId            String
+  totalRevenue      Decimal  @default(0) @db.Decimal(12, 2)
+  totalExpenses     Decimal  @default(0) @db.Decimal(12, 2)
+  totalProfit       Decimal  @default(0) @db.Decimal(12, 2)
+  pendingPayments   Decimal  @default(0) @db.Decimal(12, 2)
+  lastUpdated       DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  shop              Shop     @relation(fields: [shopId], references: [id])
+
+  @@unique([shopId])
+  @@index([lastUpdated(sort: Desc)])
+}
+
+// Stock transaction history
+model StockTransaction {
+  id              String   @id @default(uuid())
+  shopId          String
+  productId       String
+  transactionType String   // RESTOCK, SALE, ADJUSTMENT, TRANSFER
+  quantity        Int
+  unitPrice       Decimal  @db.Decimal(10, 2)
+  totalAmount     Decimal  @db.Decimal(10, 2)
+  reason          String?  // Reason for adjustment
+  referenceId     String?  // Reference to restock request or other transaction
+  notes           String?
+  createdAt       DateTime @default(now())
+  shop            Shop     @relation(fields: [shopId], references: [id])
+  product         Product  @relation(fields: [productId], references: [id])
+
+  @@index([shopId])
+  @@index([productId])
+  @@index([transactionType])
+  @@index([createdAt(sort: Desc)])
+}
+
+// Area-based analytics
+model AreaAnalytics {
+  id              String   @id @default(uuid())
+  areaName        String   // e.g., "Gotri", "Gorwa", "Laxmipura"
+  city            String   // e.g., "Vadodara"
+  state           String   // e.g., "Gujarat"
+  zipCode         String?  // Optional zip code
+  totalShops      Int      @default(0)
+  totalRevenue    Decimal  @default(0) @db.Decimal(12, 2)
+  topFlavors      Json     // Array of top performing flavors in this area
+  lastUpdated     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([areaName, city, state])
+  @@index([city])
+  @@index([state])
+  @@index([lastUpdated(sort: Desc)])
+}
+
+// Discount codes system
+model DiscountCode {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  name            String
+  description     String?
+  discountType    String   // percentage, flat, per_item, on_bill
+  discountValue   Decimal  @db.Decimal(10, 2)
+  minOrderAmount  Decimal? @db.Decimal(10, 2)
+  maxDiscount     Decimal? @db.Decimal(10, 2)
+  usageLimit      Int?     // Total usage limit
+  usedCount       Int      @default(0)
+  validFrom       DateTime
+  validUntil      DateTime
+  isActive        Boolean  @default(true)
+  isFactoryWide   Boolean  @default(false) // Factory-wide discount
+  createdBy       String   // User who created the discount
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([validFrom])
+  @@index([validUntil])
+  @@index([isFactoryWide])
+}
+
+// Stock adjustment requests
+model StockAdjustmentRequest {
+  id              String   @id @default(uuid())
+  shopId          String
+  productId       String
+  currentStock    Int
+  adjustedStock   Int
+  reason          String   // Default or custom reason
+  customReason    String?  // User-specific custom reason
+  status          String   @default("pending") // pending, approved, rejected
+  requestedBy     String   // User who requested the adjustment
+  approvedBy      String?  // Admin who approved/rejected
+  approvedAt      DateTime?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  shop            Shop     @relation(fields: [shopId], references: [id])
+  product         Product  @relation(fields: [productId], references: [id])
+
+  @@index([shopId])
+  @@index([productId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+}
+
+model Holiday {
+  id          String    @id @default(uuid())
+  name        String
+  date        DateTime
+  type        String    @default("HOLIDAY") // HOLIDAY, SPECIAL_EVENT, MAINTENANCE
+  description String?
+  year        Int
+  shopId      String?
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  shop        Shop?     @relation(fields: [shopId], references: [id])
+  creator     User      @relation("HolidayCreatedBy", fields: [createdBy], references: [publicId])
+  
+  @@index([date])
+  @@index([year])
+  @@index([shopId])
+  @@index([type])
 }

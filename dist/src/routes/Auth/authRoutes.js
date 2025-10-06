@@ -192,3 +192,50 @@ authRoutes.get("/users", Login_1.listUsers);
  *         description: Internal server error
  */
 authRoutes.get("/roles", Login_1.getRoles);
+/**
+ * @swagger
+ * /api/auth/users/{publicId}:
+ *   delete:
+ *     summary: Delete a user
+ *     description: Delete a user by their public ID (Admin only)
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: publicId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The public ID of the user to delete
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 deletedUser:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     publicId:
+ *                       type: string
+ *       400:
+ *         description: Bad request - Cannot delete yourself or user with managed shops
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - Admin access required
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
+ */
+authRoutes.delete("/users/:publicId", Login_1.deleteUser);

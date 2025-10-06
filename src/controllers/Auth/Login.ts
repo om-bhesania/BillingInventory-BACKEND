@@ -218,3 +218,84 @@ export const getRoles = async (_req: any, res: Response) => {
     res.status(500).json({ error: "Failed to fetch roles" });
   }
 };
+
+export const deleteUser = async (req: any, res: Response) => {
+  try {
+    const { publicId } = req.params;
+    const requestingUser = req.user; // From JWT middleware
+
+    // Check if user exists
+    const userToDelete = await prisma.user.findUnique({
+      where: { publicId },
+      include: {
+        managedShops: true
+      }
+    });
+
+    if (!userToDelete) {
+      return res.status(404).json({ 
+        error: "User not found",
+        message: "The user you're trying to delete does not exist"
+      });
+    }
+
+    // Prevent self-deletion
+    if (requestingUser.publicId === publicId) {
+      return res.status(400).json({ 
+        error: "Cannot delete yourself",
+        message: "You cannot delete your own account"
+      });
+    }
+
+    // Check if user is an admin or has permission to delete users
+    if (requestingUser.role !== 'Admin') {
+      return res.status(403).json({ 
+        error: "Insufficient permissions",
+        message: "Only administrators can delete users"
+      });
+    }
+
+    // Check if user has managed shops (prevent deletion if they manage shops)
+    if (userToDelete.managedShops && userToDelete.managedShops.length > 0) {
+      return res.status(400).json({ 
+        error: "Cannot delete user with managed shops",
+        message: "Please reassign shop management before deleting this user"
+      });
+    }
+
+    // Delete the user
+    const deletedUser = await prisma.user.delete({
+      where: { publicId }
+    });
+
+    logger.auth.userDeleted(publicId, requestingUser.publicId);
+    
+    res.json({ 
+      message: `User ${userToDelete.name} has been deleted successfully`,
+      deletedUser: {
+        name: userToDelete.name,
+        email: userToDelete.email,
+        publicId: userToDelete.publicId
+      }
+    });
+
+  } catch (error) {
+    console.error("Detailed error deleting user:", error);
+    logger.error("Error deleting user", error);
+    
+    // More specific error handling
+    if (error instanceof Error) {
+      res.status(500).json({ 
+        error: "Failed to delete user",
+        message: error.message,
+        details: error.stack
+      });
+    } else {
+      res.status(500).json({ 
+        error: "Failed to delete user",
+        message: "An unknown error occurred while deleting the user.",
+        details: JSON.stringify(error)
+      });
+    }
+  }
+};

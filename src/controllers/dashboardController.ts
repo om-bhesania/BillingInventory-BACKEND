@@ -896,10 +896,10 @@ export class DashboardController {
     activities.push(...recentBillings.map(billing => ({
       type: 'billing',
       action: 'Invoice generated',
-      details: `Invoice #${billing.id.slice(0, 8)} for ${billing.shop.name}`,
+      details: `Invoice #${billing.id.slice(0, 8)} for ${billing.shop?.name || 'Factory Invoice'}`,
       amount: billing.total,
       timestamp: billing.createdAt,
-      shopName: billing.shop.name
+      shopName: billing.shop?.name || 'Factory Invoice'
     })));
 
     // Get other recent restock requests (non-fulfilled)

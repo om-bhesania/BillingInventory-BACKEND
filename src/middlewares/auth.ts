@@ -37,7 +37,7 @@ export async function authenticateToken(
   req: any,
   res: Response,
   next: NextFunction
-) {
+): Promise<void> {
   try {
     const authHeader = req.headers.authorization;
     const token = authHeader?.split(" ")[1];
@@ -63,10 +63,11 @@ export async function authenticateToken(
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
-      return res.status(401).json({
+      res.status(401).json({
         message: "Invalid token",
         code: "INVALID_TOKEN",
       });
+      return;
     }
     next(error);
   }
@@ -94,7 +95,7 @@ export function checkRole(roles: string[]) {
 }
 
 export function checkShopAccess() {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     if (!req.user) {
       throw createError("User not authenticated", 401, "NOT_AUTHENTICATED");
     }
@@ -103,7 +104,8 @@ export function checkShopAccess() {
 
     // Admin can access all shops
     if (req.user.role === "Admin") {
-      return next();
+      next();
+      return;
     }
 
     // Check if user owns or manages this shop
@@ -111,7 +113,8 @@ export function checkShopAccess() {
       req.user.ownedShop?.id === shopId ||
       req.user.ownedShop?.id === shopId
     ) {
-      return next();
+      next();
+      return;
     }
 
     logger.warn("Shop access denied", {

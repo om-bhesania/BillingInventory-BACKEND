@@ -13,7 +13,7 @@ export const createPackagingType = async (req: Request, res: Response) => {
       entity: "PackagingType",
       entityId: pt.id,
       userId: (req as any).user?.publicId,
-      meta: { name }
+      metadata: { name }
     });
   } catch (error: any) {
     if (error?.code === "P2002") {

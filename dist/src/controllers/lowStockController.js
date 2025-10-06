@@ -259,13 +259,11 @@ class LowStockController {
     }
     // Shop Owner methods
     static async getShopLowStockItems(shopIds, whereClause, limit, offset) {
-        const lowStockItems = await prisma.shopInventory.findMany({
+        // First get all shop inventory items for the shops
+        const allShopItems = await prisma.shopInventory.findMany({
             where: {
                 ...whereClause,
-                shopId: { in: shopIds },
-                currentStock: {
-                    lte: 10 // Use a default value instead of prisma.product.fields.minStockLevel
-                }
+                shopId: { in: shopIds }
             },
             include: {
                 product: {
@@ -278,33 +276,47 @@ class LowStockController {
             orderBy: [
                 { currentStock: 'asc' },
                 { updatedAt: 'desc' }
-            ],
-            take: limit,
-            skip: offset
+            ]
         });
-        return lowStockItems.map(item => ({
-            id: item.id,
-            productId: item.productId,
-            productName: item.product.name,
-            category: item.product.category.name,
-            flavor: item.product.flavor.name,
-            currentStock: item.currentStock,
-            minStockLevel: item.product.minStockLevel || 10,
-            stockDeficit: (item.product.minStockLevel || 10) - item.currentStock,
-            lastRestockDate: item.lastRestockDate,
-            urgency: LowStockController.calculateUrgency(item.currentStock, item.product.minStockLevel || 10)
-        }));
+        // Filter items that are actually low stock based on shop-specific or factory min stock
+        const lowStockItems = allShopItems.filter(item => {
+            const shopMinStock = item.minStockPerItem ?? item.product.minStockLevel ?? 10;
+            return item.currentStock <= shopMinStock;
+        }).slice(offset, offset + limit);
+        return lowStockItems.map(item => {
+            // Use shop-specific min stock if set, otherwise fall back to factory level
+            const shopMinStock = item.minStockPerItem ?? item.product.minStockLevel ?? 10;
+            return {
+                id: item.id,
+                productId: item.productId,
+                productName: item.product.name,
+                category: item.product.category.name,
+                flavor: item.product.flavor.name,
+                currentStock: item.currentStock,
+                minStockLevel: shopMinStock,
+                stockDeficit: shopMinStock - item.currentStock,
+                lastRestockDate: item.lastRestockDate,
+                urgency: LowStockController.calculateUrgency(item.currentStock, shopMinStock),
+                alertsEnabled: item.lowStockAlertsEnabled
+            };
+        });
     }
     static async getShopLowStockItemsCount(shopIds, whereClause) {
-        return await prisma.shopInventory.count({
+        // Get all shop inventory items for the shops
+        const allShopItems = await prisma.shopInventory.findMany({
             where: {
                 ...whereClause,
-                shopId: { in: shopIds },
-                currentStock: {
-                    lte: 10 // Use a default value instead of prisma.product.fields.minStockLevel
-                }
+                shopId: { in: shopIds }
+            },
+            include: {
+                product: true
             }
         });
+        // Count items that are actually low stock based on shop-specific or factory min stock
+        return allShopItems.filter(item => {
+            const shopMinStock = item.minStockPerItem ?? item.product.minStockLevel ?? 10;
+            return item.currentStock <= shopMinStock;
+        }).length;
     }
     static async getShopLowStockStats(shopIds) {
         const totalLowStockItems = await prisma.shopInventory.count({

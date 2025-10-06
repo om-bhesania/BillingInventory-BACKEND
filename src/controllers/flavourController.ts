@@ -29,7 +29,7 @@ export const createFlavor = async (req: Request, res: Response) => {
       entity: "Flavor",
       entityId: flavor.id,
       userId: (req as any).user?.publicId,
-      meta: { name: flavor.name }
+      metadata: { name: flavor.name }
     });
   } catch (error) {
     console.error("Error creating flavor:", error);

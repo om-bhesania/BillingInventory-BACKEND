@@ -5,43 +5,61 @@ const client_1 = require("../config/client");
 const logger_1 = require("../utils/logger");
 const roles_1 = require("../config/roles");
 const NotificationsController_1 = require("./NotificationsController");
+const socketService_1 = require("../services/socketService");
 const audit_1 = require("../utils/audit");
 // Create billing
 const createBilling = async (req, res) => {
     try {
-        const { shopId, invoiceNumber, customerName, customerEmail, items, subtotal, tax = 0, discount = 0, total, } = req.body;
-        const userId = req.user?.id;
+        const { shopId, invoiceNumber, customerName, customerEmail, items, subtotal, tax = 0, discount = 0, total, invoiceType = "SHOP", // SHOP | FACTORY
+         } = req.body;
+        const userId = req.user?.publicId;
         if (!userId) {
             res.status(401).json({ error: "Unauthorized" });
             return;
         }
         // Check if user has access to this shop
         const user = await client_1.prisma.user.findUnique({
-            where: { id: userId },
+            where: { publicId: userId },
         });
         if (!user) {
             res.status(401).json({ error: "User not found" });
             return;
         }
-        // Check if user manages this shop by querying directly
-        const managedShop = await client_1.prisma.shop.findFirst({
-            where: {
-                id: shopId,
-                managerId: user.publicId
-            },
-        });
-        const userShopId = managedShop?.id;
-        if (!user.role || (!(0, roles_1.isAdmin)(user.role) && shopId !== userShopId)) {
-            res.status(403).json({ error: "Access denied to this shop" });
-            return;
+        let shop = null;
+        // Handle different invoice types
+        if (invoiceType === "FACTORY") {
+            // Factory invoices don't require shop validation
+            if (!(0, roles_1.isAdmin)(user.role || "")) {
+                res.status(403).json({ error: "Only admins can create factory invoices" });
+                return;
+            }
         }
-        // Check if shop exists
-        const shop = await client_1.prisma.shop.findUnique({
-            where: { id: shopId },
-        });
-        if (!shop) {
-            res.status(404).json({ error: "Shop not found" });
-            return;
+        else {
+            // Shop invoices require shop validation
+            if (!shopId) {
+                res.status(400).json({ error: "Shop ID is required for shop invoices" });
+                return;
+            }
+            // Check if user manages this shop by querying directly
+            const managedShop = await client_1.prisma.shop.findFirst({
+                where: {
+                    id: shopId,
+                    managerId: user.publicId
+                },
+            });
+            const userShopId = managedShop?.id;
+            if (!user.role || (!(0, roles_1.isAdmin)(user.role) && shopId !== userShopId)) {
+                res.status(403).json({ error: "Access denied to this shop" });
+                return;
+            }
+            // Check if shop exists
+            shop = await client_1.prisma.shop.findUnique({
+                where: { id: shopId },
+            });
+            if (!shop) {
+                res.status(404).json({ error: "Shop not found" });
+                return;
+            }
         }
         // Validate items and check stock
         const validatedItems = [];
@@ -56,34 +74,47 @@ const createBilling = async (req, res) => {
                 res.status(400).json({ error: `Product ${productId} not found` });
                 return;
             }
-            // Check shop inventory stock
-            const shopInventory = await client_1.prisma.shopInventory.findFirst({
-                where: {
-                    shopId,
-                    productId,
-                },
-            });
-            if (!shopInventory) {
-                res.status(400).json({ error: `Product ${product.name} not available in this shop` });
-                return;
-            }
-            if (shopInventory.currentStock < quantity) {
-                res.status(400).json({
-                    error: `Insufficient stock for ${product.name}. Available: ${shopInventory.currentStock}, Requested: ${quantity}`
+            // For factory invoices, skip shop inventory validation
+            if (invoiceType === "FACTORY") {
+                // Calculate item total
+                const itemTotal = quantity * unitPrice;
+                validatedItems.push({
+                    ...item,
+                    productName: item.productName || product.name,
+                    total: itemTotal,
                 });
-                return;
             }
-            // Calculate item total
-            const itemTotal = quantity * unitPrice;
-            validatedItems.push({
-                ...item,
-                total: itemTotal,
-            });
-            // Prepare stock update
-            stockUpdates.push({
-                inventoryId: shopInventory.id,
-                newStock: shopInventory.currentStock - quantity,
-            });
+            else {
+                // For shop invoices, validate shop inventory
+                const shopInventory = await client_1.prisma.shopInventory.findFirst({
+                    where: {
+                        shopId,
+                        productId,
+                    },
+                });
+                if (!shopInventory) {
+                    res.status(400).json({ error: `Product ${product.name} not available in this shop` });
+                    return;
+                }
+                if (shopInventory.currentStock < quantity) {
+                    res.status(400).json({
+                        error: `Insufficient stock for ${product.name}. Available: ${shopInventory.currentStock}, Requested: ${quantity}`
+                    });
+                    return;
+                }
+                // Calculate item total
+                const itemTotal = quantity * unitPrice;
+                validatedItems.push({
+                    ...item,
+                    productName: item.productName || product.name,
+                    total: itemTotal,
+                });
+                // Prepare stock update for shop invoices
+                stockUpdates.push({
+                    inventoryId: shopInventory.id,
+                    newStock: shopInventory.currentStock - quantity,
+                });
+            }
         }
         // Create billing transaction (backward-compatible with/without createdBy fields)
         // Auto-generate invoice number if not provided: BLISS/YYYY/00001
@@ -110,7 +141,7 @@ const createBilling = async (req, res) => {
             catch { }
         }
         const baseData = {
-            shopId,
+            shopId: invoiceType === "FACTORY" ? null : shopId,
             customerName,
             customerEmail,
             items: validatedItems,
@@ -119,94 +150,150 @@ const createBilling = async (req, res) => {
             discount,
             total,
             paymentStatus: "pending",
+            invoiceType,
         };
-        // Prefer tagging creator if the schema supports it. Fallback if not.
-        let billing;
-        try {
-            const extendedData = {
+        // Create billing with proper fields
+        const billing = await client_1.prisma.billing.create({
+            data: {
                 ...baseData,
                 invoiceNumber: nextInvoiceNumber || null,
                 createdBy: user.publicId,
                 createdByRole: user.role || null,
-            };
-            billing = await client_1.prisma.billing.create({
-                data: extendedData,
-                include: { shop: true },
-            });
-        }
-        catch (_err) {
-            // If the DB/schema doesn't have these columns yet, create without them
-            billing = await client_1.prisma.billing.create({
-                data: baseData,
-                include: { shop: true },
-            });
-        }
-        // Update stock levels
-        for (const update of stockUpdates) {
-            await client_1.prisma.shopInventory.update({
-                where: { id: update.inventoryId },
-                data: {
-                    currentStock: update.newStock,
-                    isActive: true,
-                    updatedAt: new Date(),
-                },
-            });
-        }
-        // Do NOT decrement factory-level product.totalStock on billing.
-        // Factory stock is decremented when restock requests are approved/in_transit.
-        // Check for low stock after sale and trigger notifications
-        for (const item of validatedItems) {
-            const shopInventory = await client_1.prisma.shopInventory.findFirst({
-                where: {
-                    shopId,
-                    productId: item.productId,
-                    isActive: true,
-                },
-            });
-            if (shopInventory) {
-                const product = await client_1.prisma.product.findUnique({
-                    where: { id: item.productId },
+            },
+            include: { shop: true },
+        });
+        // Update stock levels only for shop invoices
+        if (invoiceType === "SHOP") {
+            for (const update of stockUpdates) {
+                await client_1.prisma.shopInventory.update({
+                    where: { id: update.inventoryId },
+                    data: {
+                        currentStock: update.newStock,
+                        isActive: true,
+                        updatedAt: new Date(),
+                    },
                 });
-                if (product && product.minStockLevel &&
-                    shopInventory.currentStock <= product.minStockLevel) {
-                    const notificationMessage = `Low stock alert after sale: ${product.name} in ${shop.name} has only ${shopInventory.currentStock} units remaining (min: ${product.minStockLevel})`;
-                    // Notify shop manager
-                    if (shop.managerId) {
-                        await client_1.prisma.notification.create({
-                            data: {
-                                userId: shop.managerId,
-                                type: "LOW_STOCK",
-                                message: notificationMessage,
-                            },
-                        });
-                        (0, NotificationsController_1.emitUserNotification)(shop.managerId, {
-                            event: "created",
-                            notification: {
-                                type: "LOW_STOCK",
-                                message: notificationMessage,
-                            },
-                        });
+            }
+            // Check for low stock after sale and trigger notifications
+            for (const item of validatedItems) {
+                const shopInventory = await client_1.prisma.shopInventory.findFirst({
+                    where: {
+                        shopId,
+                        productId: item.productId,
+                        isActive: true,
+                    },
+                });
+                if (shopInventory) {
+                    const product = await client_1.prisma.product.findUnique({
+                        where: { id: item.productId },
+                    });
+                    if (product && product.minStockLevel &&
+                        shopInventory.currentStock <= product.minStockLevel) {
+                        const notificationMessage = `🚨 Low stock alert after sale: ${product.name} in ${shop?.name || 'Unknown Shop'} has only ${shopInventory.currentStock} units remaining (min: ${product.minStockLevel})`;
+                        // Notify shop manager
+                        if (shop?.managerId) {
+                            await client_1.prisma.notification.create({
+                                data: {
+                                    userId: shop.managerId,
+                                    type: "LOW_STOCK_ALERT",
+                                    category: "INVENTORY",
+                                    priority: "HIGH",
+                                    message: notificationMessage,
+                                    metadata: JSON.stringify({
+                                        productId: item.productId,
+                                        productName: product.name,
+                                        currentStock: shopInventory.currentStock,
+                                        minStockLevel: product.minStockLevel,
+                                        shopId: shop.id,
+                                        shopName: shop.name
+                                    })
+                                },
+                            });
+                            (0, NotificationsController_1.emitUserNotification)(shop.managerId, {
+                                event: "created",
+                                notification: {
+                                    type: "LOW_STOCK_ALERT",
+                                    category: "INVENTORY",
+                                    priority: "HIGH",
+                                    message: notificationMessage,
+                                },
+                            });
+                        }
                     }
                 }
             }
         }
-        // Trigger invoice notification
-        const invoiceMessage = `Invoice generated for ${shop.name}: ${customerName || 'Customer'} - Total: $${total}`;
-        if (shop.managerId) {
-            await client_1.prisma.notification.create({
-                data: {
-                    userId: shop.managerId,
-                    type: "INVOICE",
-                    message: invoiceMessage,
-                },
+        // Create appropriate notifications based on invoice type
+        if (invoiceType === "FACTORY") {
+            // Factory invoice notification - notify all admins
+            const adminUsers = await client_1.prisma.user.findMany({
+                where: { role: "Admin" },
+                select: { publicId: true, name: true }
             });
-            (0, NotificationsController_1.emitUserNotification)(shop.managerId, {
-                event: "created",
-                notification: {
-                    type: "INVOICE",
-                    message: invoiceMessage,
-                },
-            });
+            const factoryMessage = `🏭 Factory invoice created: ${customerName || 'Customer'} - Total: ₹${total} (Created by ${user.name || user.email})`;
+            for (const admin of adminUsers) {
+                await client_1.prisma.notification.create({
+                    data: {
+                        userId: admin.publicId,
+                        type: "FACTORY_INVOICE_CREATED",
+                        category: "FACTORY",
+                        priority: "MEDIUM",
+                        message: factoryMessage,
+                        metadata: JSON.stringify({
+                            invoiceId: billing.id,
+                            invoiceNumber: billing.invoiceNumber,
+                            createdBy: user.publicId,
+                            createdByName: user.name || user.email,
+                            total: total,
+                            customerName: customerName || 'Customer'
+                        })
+                    },
+                });
+                (0, NotificationsController_1.emitUserNotification)(admin.publicId, {
+                    event: "created",
+                    notification: {
+                        type: "FACTORY_INVOICE_CREATED",
+                        category: "FACTORY",
+                        priority: "MEDIUM",
+                        message: factoryMessage,
+                    },
+                });
+            }
+        }
+        else {
+            // Shop invoice notification
+            const shopMessage = `🧾 Invoice generated for ${shop?.name || 'Unknown Shop'}: ${customerName || 'Customer'} - Total: ₹${total}${(0, roles_1.isAdmin)(user.role || "") ? ` (Created by Admin: ${user.name || user.email})` : ''}`;
+            if (shop?.managerId) {
+                await client_1.prisma.notification.create({
+                    data: {
+                        userId: shop.managerId,
+                        type: "SHOP_INVOICE_CREATED",
+                        category: "BILLING",
+                        priority: "MEDIUM",
+                        message: shopMessage,
+                        metadata: JSON.stringify({
+                            invoiceId: billing.id,
+                            invoiceNumber: billing.invoiceNumber,
+                            shopId: shop.id,
+                            shopName: shop.name,
+                            createdBy: user.publicId,
+                            createdByName: user.name || user.email,
+                            createdByRole: user.role,
+                            total: total,
+                            customerName: customerName || 'Customer'
+                        })
+                    },
+                });
+                (0, NotificationsController_1.emitUserNotification)(shop.managerId, {
+                    event: "created",
+                    notification: {
+                        type: "SHOP_INVOICE_CREATED",
+                        category: "BILLING",
+                        priority: "MEDIUM",
+                        message: shopMessage,
+                    },
+                });
+            }
         }
         // Audit
         await (0, audit_1.logActivity)({
@@ -216,8 +303,28 @@ const createBilling = async (req, res) => {
             entityId: billing.id,
             userId: req.user?.publicId,
             shopId,
-            meta: { total }
+            metadata: { total }
         });
+        // Broadcast real-time update
+        const socketService = (0, socketService_1.getSocketService)();
+        socketService.broadcastBillingUpdate(shopId, {
+            type: 'created',
+            billing: billing,
+            timestamp: new Date().toISOString()
+        });
+        // Emit revenue update for admin dashboard (only for shop invoices)
+        if (invoiceType === "SHOP") {
+            socketService.emitToAll('revenue_updated', {
+                event: 'revenue_updated',
+                data: {
+                    total: billing.total,
+                    shopId: billing.shopId,
+                    shopName: shop?.name || 'Unknown Shop',
+                    invoiceNumber: billing.invoiceNumber,
+                    timestamp: new Date().toISOString()
+                }
+            });
+        }
         res.status(201).json(billing);
     }
     catch (error) {
@@ -230,13 +337,13 @@ exports.createBilling = createBilling;
 const getBillings = async (req, res) => {
     try {
         const { shopId } = req.params;
-        const userId = req.user?.id;
+        const userId = req.user?.publicId;
         if (!userId) {
             res.status(401).json({ error: "Unauthorized" });
             return;
         }
         const user = await client_1.prisma.user.findUnique({
-            where: { id: userId },
+            where: { publicId: userId },
         });
         if (!user) {
             res.status(401).json({ error: "User not found" });
@@ -274,13 +381,13 @@ exports.getBillings = getBillings;
 const getBillingById = async (req, res) => {
     try {
         const { id } = req.params;
-        const userId = req.user?.id;
+        const userId = req.user?.publicId;
         if (!userId) {
             res.status(401).json({ error: "Unauthorized" });
             return;
         }
         const user = await client_1.prisma.user.findUnique({
-            where: { id: userId },
+            where: { publicId: userId },
         });
         if (!user) {
             res.status(401).json({ error: "User not found" });
@@ -297,12 +404,15 @@ const getBillingById = async (req, res) => {
             return;
         }
         // Check if user manages this shop by querying directly
-        const managedShop = await client_1.prisma.shop.findFirst({
-            where: {
-                id: billing.shopId,
-                managerId: user.publicId
-            },
-        });
+        let managedShop = null;
+        if (billing.shopId) {
+            managedShop = await client_1.prisma.shop.findFirst({
+                where: {
+                    id: billing.shopId,
+                    managerId: user.publicId
+                },
+            });
+        }
         const userShopId = managedShop?.id;
         if (!user.role || (!(0, roles_1.isAdmin)(user.role) && billing.shopId !== userShopId)) {
             res.status(403).json({ error: "Access denied to this billing" });
@@ -321,13 +431,13 @@ const updateBillingPaymentStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const { paymentStatus } = req.body;
-        const userId = req.user?.id;
+        const userId = req.user?.publicId;
         if (!userId) {
             res.status(401).json({ error: "Unauthorized" });
             return;
         }
         const user = await client_1.prisma.user.findUnique({
-            where: { id: userId },
+            where: { publicId: userId },
         });
         if (!user) {
             res.status(401).json({ error: "User not found" });
@@ -344,12 +454,15 @@ const updateBillingPaymentStatus = async (req, res) => {
             return;
         }
         // Check if user manages this shop by querying directly
-        const managedShop = await client_1.prisma.shop.findFirst({
-            where: {
-                id: billing.shopId,
-                managerId: user.publicId
-            },
-        });
+        let managedShop = null;
+        if (billing.shopId) {
+            managedShop = await client_1.prisma.shop.findFirst({
+                where: {
+                    id: billing.shopId,
+                    managerId: user.publicId
+                },
+            });
+        }
         const userShopId = managedShop?.id;
         if (!user.role || (!(0, roles_1.isAdmin)(user.role) && billing.shopId !== userShopId)) {
             res.status(403).json({ error: "Access denied to this billing" });
@@ -381,13 +494,13 @@ exports.updateBillingPaymentStatus = updateBillingPaymentStatus;
 const getBillingStats = async (req, res) => {
     try {
         const { shopId } = req.params;
-        const userId = req.user?.id;
+        const userId = req.user?.publicId;
         if (!userId) {
             res.status(401).json({ error: "Unauthorized" });
             return;
         }
         const user = await client_1.prisma.user.findUnique({
-            where: { id: userId },
+            where: { publicId: userId },
         });
         if (!user) {
             res.status(401).json({ error: "User not found" });

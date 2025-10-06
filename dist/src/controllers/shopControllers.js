@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.unlinkShopManager = exports.linkShopManager = exports.deleteShop = exports.updateShop = exports.getShopById = exports.getAllShops = exports.unlinkShopFromUser = exports.linkShopToUser = exports.createShop = void 0;
+exports.deleteAllShopData = exports.unlinkShopManager = exports.linkShopManager = exports.forceDeleteShop = exports.deleteShop = exports.updateShop = exports.getShopById = exports.getAllShops = exports.unlinkShopFromUser = exports.linkShopToUser = exports.createShop = void 0;
 const client_1 = require("@prisma/client");
 const client_2 = require("../config/client");
 const logger_1 = require("../utils/logger");
@@ -103,7 +103,7 @@ const createShop = async (req, res) => {
             entityId: shop.id,
             userId: req.user?.publicId,
             shopId: shop.id,
-            meta: { name }
+            metadata: { name }
         });
         return res.status(201).json(shop);
     }
@@ -463,21 +463,48 @@ const deleteShop = async (req, res) => {
         if (!user || !user.Role || !(0, roles_1.isAdmin)(user.Role.name)) {
             return res.status(403).json({ error: "Admin access required" });
         }
-        // Check if shop has manager
+        // Check if shop exists and get related data counts
         const shop = await prisma.shop.findUnique({
             where: { id },
-            select: { managerId: true },
+            include: {
+                _count: {
+                    select: {
+                        inventory: true,
+                        billings: true,
+                        restockRequests: true,
+                    },
+                },
+            },
         });
         if (!shop) {
             return res.status(404).json({ error: "Shop not found" });
         }
+        // Check if shop has a manager
         if (shop.managerId) {
             return res.status(400).json({
                 error: "Cannot delete shop with linked manager. Unlink them first.",
             });
         }
-        await prisma.shop.delete({
-            where: { id },
+        // Check if shop has related data
+        const hasRelatedData = shop._count.inventory > 0 ||
+            shop._count.billings > 0 ||
+            shop._count.restockRequests > 0;
+        if (hasRelatedData) {
+            return res.status(400).json({
+                error: "Cannot delete shop with related data. Please delete all inventory, billing, and restock request records first.",
+                details: {
+                    inventoryCount: shop._count.inventory,
+                    billingCount: shop._count.billings,
+                    restockRequestCount: shop._count.restockRequests,
+                },
+            });
+        }
+        // Use a transaction to ensure data consistency
+        await prisma.$transaction(async (tx) => {
+            // Delete the shop (this should work now since we've verified no related data exists)
+            await tx.shop.delete({
+                where: { id },
+            });
         });
         return res.status(200).json({ message: "Shop deleted successfully" });
     }
@@ -487,18 +514,92 @@ const deleteShop = async (req, res) => {
     }
 };
 exports.deleteShop = deleteShop;
+// Force delete shop with cascade (admin only)
+const forceDeleteShop = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userPublicId = req.user?.publicId;
+        if (!userPublicId) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+        const user = await prisma.user.findUnique({
+            where: { publicId: userPublicId },
+            include: { Role: true },
+        });
+        if (!user || !user.Role || !(0, roles_1.isAdmin)(user.Role.name)) {
+            return res.status(403).json({ error: "Admin access required" });
+        }
+        // Check if shop exists
+        const shop = await prisma.shop.findUnique({
+            where: { id },
+            include: {
+                _count: {
+                    select: {
+                        inventory: true,
+                        billings: true,
+                        restockRequests: true,
+                    },
+                },
+            },
+        });
+        if (!shop) {
+            return res.status(404).json({ error: "Shop not found" });
+        }
+        // Use a transaction to cascade delete all related data
+        await prisma.$transaction(async (tx) => {
+            // First, unlink the manager if exists
+            if (shop.managerId) {
+                await tx.shop.update({
+                    where: { id },
+                    data: { managerId: null },
+                });
+            }
+            // Delete all related records in the correct order
+            // 1. Delete shop inventory
+            await tx.shopInventory.deleteMany({
+                where: { shopId: id },
+            });
+            // 2. Delete restock requests
+            await tx.restockRequest.deleteMany({
+                where: { shopId: id },
+            });
+            // 3. Delete billings
+            await tx.billing.deleteMany({
+                where: { shopId: id },
+            });
+            // 4. Finally delete the shop
+            await tx.shop.delete({
+                where: { id },
+            });
+        });
+        return res.status(200).json({
+            message: "Shop and all related data deleted successfully",
+            deletedData: {
+                inventoryCount: shop._count.inventory,
+                billingCount: shop._count.billings,
+                restockRequestCount: shop._count.restockRequests,
+            },
+        });
+    }
+    catch (error) {
+        logger_1.logger.error("Error force deleting shop:", error);
+        return res.status(500).json({ error: "Failed to force delete shop" });
+    }
+};
+exports.forceDeleteShop = forceDeleteShop;
 // Link shop manager
 const linkShopManager = async (req, res) => {
     try {
-        const { shopId, userPublicId } = req.body;
+        const { id: shopId } = req.params;
+        const { userPublicId } = req.body;
         if (!shopId || !userPublicId) {
             return res
                 .status(400)
                 .json({ error: "Shop ID and User Public ID are required" });
         }
-        // Check if user is admin
+        // Check if current user is admin (the one making the request)
         const currentUser = await prisma.user.findUnique({
-            where: { publicId: userPublicId },
+            where: { publicId: req.user?.publicId },
             include: { Role: true },
         });
         if (!currentUser || !currentUser.Role || !(0, roles_1.isAdmin)(currentUser.Role.name)) {
@@ -552,7 +653,7 @@ exports.linkShopManager = linkShopManager;
 // Unlink shop manager
 const unlinkShopManager = async (req, res) => {
     try {
-        const { shopId } = req.params;
+        const { id: shopId } = req.params;
         // Check if user is admin
         const currentUser = await prisma.user.findUnique({
             where: { publicId: req.user?.publicId },
@@ -603,3 +704,134 @@ const unlinkShopManager = async (req, res) => {
     }
 };
 exports.unlinkShopManager = unlinkShopManager;
+// Delete all shop data (Admin only)
+const deleteAllShopData = async (req, res) => {
+    try {
+        const { id: shopId } = req.params;
+        // Check if user is admin
+        const currentUser = await prisma.user.findUnique({
+            where: { publicId: req.user?.publicId },
+            include: { Role: true },
+        });
+        if (!currentUser || !currentUser.Role || !(0, roles_1.isAdmin)(currentUser.Role.name)) {
+            return res.status(403).json({ error: "Admin access required" });
+        }
+        // Check if shop exists
+        const shop = await prisma.shop.findUnique({
+            where: { id: shopId },
+            include: {
+                _count: {
+                    select: {
+                        inventory: true,
+                        billings: true,
+                        restockRequests: true,
+                    },
+                },
+            },
+        });
+        if (!shop) {
+            return res.status(404).json({ error: "Shop not found" });
+        }
+        // Get the current manager before unlinking
+        const currentManagerId = shop.managerId;
+        // Use a transaction to ensure all operations succeed or fail together
+        // Increase timeout to 30 seconds for large data operations
+        const result = await prisma.$transaction(async (tx) => {
+            // 1. Unlink manager first (don't delete the employee)
+            if (currentManagerId) {
+                // Update the shop to remove manager link
+                await tx.shop.update({
+                    where: { id: shopId },
+                    data: { managerId: null },
+                });
+                // Update the user to remove shop from their managed shops
+                await tx.user.update({
+                    where: { publicId: currentManagerId },
+                    data: {
+                        shopIds: {
+                            set: [], // Clear all shop IDs for now, we'll add back the others
+                        },
+                    },
+                });
+                // Get all other shops this user manages (excluding the current one)
+                const user = await tx.user.findUnique({
+                    where: { publicId: currentManagerId },
+                    select: { shopIds: true },
+                });
+                if (user && user.shopIds) {
+                    const otherShops = user.shopIds.filter(id => id !== shopId);
+                    await tx.user.update({
+                        where: { publicId: currentManagerId },
+                        data: {
+                            shopIds: {
+                                set: otherShops,
+                            },
+                        },
+                    });
+                }
+                logger_1.logger.info(`Unlinked manager ${currentManagerId} from shop ${shopId}`);
+            }
+            // 2. Delete all shop inventory records
+            const deletedInventory = await tx.shopInventory.deleteMany({
+                where: { shopId: shopId },
+            });
+            // 3. Delete all restock requests for this shop
+            const deletedRestockRequests = await tx.restockRequest.deleteMany({
+                where: { shopId: shopId },
+            });
+            // 4. Delete all billing records for this shop
+            const deletedBillings = await tx.billing.deleteMany({
+                where: { shopId: shopId },
+            });
+            // 5. Finally delete the shop itself
+            const deletedShop = await tx.shop.delete({
+                where: { id: shopId },
+            });
+            return {
+                shop: deletedShop,
+                inventory: deletedInventory.count,
+                restockRequests: deletedRestockRequests.count,
+                billings: deletedBillings.count,
+                managerUnlinked: !!currentManagerId,
+            };
+        }, {
+            timeout: 30000, // 30 seconds timeout for large data operations
+        });
+        logger_1.logger.info(`Successfully deleted all data for shop ${shopId}:`, {
+            inventoryRecords: result.inventory,
+            restockRequests: result.restockRequests,
+            billingRecords: result.billings,
+            managerUnlinked: result.managerUnlinked,
+        });
+        return res.status(200).json({
+            message: "All shop data deleted successfully",
+            shopId: shopId,
+            deletedRecords: {
+                inventory: result.inventory,
+                restockRequests: result.restockRequests,
+                billings: result.billings,
+                managerUnlinked: result.managerUnlinked,
+            },
+        });
+    }
+    catch (error) {
+        logger_1.logger.error("Error deleting all shop data:", error);
+        // Check if it's a transaction timeout error
+        if (error.code === 'P2028') {
+            return res.status(408).json({
+                error: "Operation timed out. The shop may have too much data. Please try again or contact support."
+            });
+        }
+        // Check if it's a foreign key constraint error
+        if (error.code === 'P2003') {
+            return res.status(409).json({
+                error: "Cannot delete shop due to related data constraints. Please try unlinking the manager first."
+            });
+        }
+        return res.status(500).json({
+            error: "Failed to delete all shop data",
+            details: error.message
+        });
+    }
+};
+exports.deleteAllShopData = deleteAllShopData;

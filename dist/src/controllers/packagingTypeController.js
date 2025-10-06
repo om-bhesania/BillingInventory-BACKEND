@@ -14,7 +14,7 @@ const createPackagingType = async (req, res) => {
             entity: "PackagingType",
             entityId: pt.id,
             userId: req.user?.publicId,
-            meta: { name }
+            metadata: { name }
         });
     }
     catch (error) {

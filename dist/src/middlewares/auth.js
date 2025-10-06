@@ -37,10 +37,11 @@ async function authenticateToken(req, res, next) {
     }
     catch (error) {
         if (error instanceof jsonwebtoken_1.default.JsonWebTokenError) {
-            return res.status(401).json({
+            res.status(401).json({
                 message: "Invalid token",
                 code: "INVALID_TOKEN",
             });
+            return;
         }
         next(error);
     }
@@ -70,12 +71,14 @@ function checkShopAccess() {
         const shopId = req.params.shopId || req.body.shopId;
         // Admin can access all shops
         if (req.user.role === "Admin") {
-            return next();
+            next();
+            return;
         }
         // Check if user owns or manages this shop
         if (req.user.ownedShop?.id === shopId ||
             req.user.ownedShop?.id === shopId) {
-            return next();
+            next();
+            return;
         }
         logger_1.logger.warn("Shop access denied", {
             userId: req.user.id,

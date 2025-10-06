@@ -20,6 +20,9 @@ function checkPermissions(resource, action) {
             ...user,
             password: '', // Add empty password as it's required by UserWithRole
             shopIds: user.shopIds || [], // Add shopIds field with default empty array
+            preferences: user.preferences || null, // Add preferences field
+            createdAt: new Date(), // Add required createdAt field
+            updatedAt: new Date(), // Add required updatedAt field
         };
         if ((0, permissions_1.hasPermission)(userWithRole, resource, action)) {
             next();

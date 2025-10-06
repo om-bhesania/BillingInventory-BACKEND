@@ -24,7 +24,7 @@ export const createCategory = async (req: Request, res: Response) => {
         res.status(201).json(category);
         await logActivity({
             type: 'category', action: 'created', entity: 'Category', entityId: category.id,
-            userId: (req as any).user?.publicId, meta: { name }
+            userId: (req as any).user?.publicId, metadata: { name }
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to create category' });
