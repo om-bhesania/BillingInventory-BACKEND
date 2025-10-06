@@ -192,6 +192,7 @@ model Billing {
   shopId        String?
   customerName  String?
   customerEmail String?
+  customerContact String?
   items         Json
   subtotal      Float
   tax           Float    @default(0)

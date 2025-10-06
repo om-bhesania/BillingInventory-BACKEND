@@ -3,6 +3,7 @@ import express, { RequestHandler } from "express";
 import { authenticateToken } from "../middlewares/auth";
 import {
   createBilling,
+  getNextInvoiceNumber,
   getBillingById,
   getBillings,
   getBillingStats,
@@ -259,6 +260,9 @@ billingRoutes.use(authenticateToken as any);
  *         description: Internal server error
  */
 billingRoutes.post("/", createBilling as RequestHandler);
+
+// Get next invoice number
+billingRoutes.get("/next-invoice-number", getNextInvoiceNumber as RequestHandler);
 
 /**
  * @swagger

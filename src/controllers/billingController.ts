@@ -5,6 +5,7 @@ import { isAdmin, isShopOwner } from "../config/roles";
 import { emitUserNotification } from "./NotificationsController";
 import { getSocketService } from "../services/socketService";
 import { logActivity } from "../utils/audit";
+import { ParsedQs } from "qs";
 
 // Create billing
 export const createBilling = async (req: Request, res: Response): Promise<void> => {
@@ -14,6 +15,7 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
       invoiceNumber,
       customerName,
       customerEmail,
+      customerContact,
       items,
       subtotal,
       tax = 0,
@@ -173,6 +175,7 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
       shopId: invoiceType === "FACTORY" ? null : shopId,
       customerName,
       customerEmail,
+      customerContact,
       items: validatedItems,
       subtotal,
       tax,
@@ -375,6 +378,44 @@ export const createBilling = async (req: Request, res: Response): Promise<void> 
   } catch (error) {
     logger.error("Error creating billing:", error);
     res.status(500).json({ error: "Failed to create billing" });
+  }
+};
+
+// Get next invoice number
+export const getNextInvoiceNumber = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req as any).user?.publicId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const year = new Date().getFullYear();
+    const prefix = `BLIZZ/${year}`;
+    try {
+      const latest = await (prisma as any).billing.findFirst({
+        where: { invoiceNumber: { startsWith: prefix } } as any,
+        orderBy: [{ createdAt: "desc" }],
+        select: { invoiceNumber: true } as any,
+      });
+      const lastSeq = (() => {
+        const raw = (latest as any)?.invoiceNumber || "";
+        const parts = raw.split("/");
+        const tail = parts[2] || "00000";
+        const n = parseInt(tail, 10);
+        return Number.isFinite(n) ? n : 0;
+      })();
+      const nextSeq = String(lastSeq + 1).padStart(5, "0");
+      const nextInvoiceNumber = `${prefix}/${nextSeq}`;
+      res.json({ invoiceNumber: nextInvoiceNumber });
+      return;
+    } catch (e) {
+      res.json({ invoiceNumber: `${prefix}/00001` });
+      return;
+    }
+  } catch (error) {
+    logger.error("Error computing next invoice number:", error);
+    res.status(500).json({ error: "Failed to compute next invoice number" });
   }
 };
 
