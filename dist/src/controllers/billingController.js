@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getBillingStats = exports.updateBillingPaymentStatus = exports.getBillingById = exports.getBillings = exports.createBilling = void 0;
+exports.getBillingStats = exports.updateBillingPaymentStatus = exports.getBillingById = exports.getBillings = exports.getNextInvoiceNumber = exports.createBilling = void 0;
 const client_1 = require("../config/client");
 const logger_1 = require("../utils/logger");
 const roles_1 = require("../config/roles");
@@ -10,7 +10,7 @@ const audit_1 = require("../utils/audit");
 // Create billing
 const createBilling = async (req, res) => {
     try {
-        const { shopId, invoiceNumber, customerName, customerEmail, items, subtotal, tax = 0, discount = 0, total, invoiceType = "SHOP", // SHOP | FACTORY
+        const { shopId, invoiceNumber, customerName, customerEmail, customerContact, items, subtotal, tax = 0, discount = 0, total, invoiceType = "SHOP", // SHOP | FACTORY
          } = req.body;
         const userId = req.user?.publicId;
         if (!userId) {
@@ -144,6 +144,7 @@ const createBilling = async (req, res) => {
             shopId: invoiceType === "FACTORY" ? null : shopId,
             customerName,
             customerEmail,
+            customerContact,
             items: validatedItems,
             subtotal,
             tax,
@@ -333,6 +334,45 @@ const createBilling = async (req, res) => {
     }
 };
 exports.createBilling = createBilling;
+// Get next invoice number
+const getNextInvoiceNumber = async (req, res) => {
+    try {
+        const userId = req.user?.publicId;
+        if (!userId) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+        const year = new Date().getFullYear();
+        const prefix = `BLIZZ/${year}`;
+        try {
+            const latest = await client_1.prisma.billing.findFirst({
+                where: { invoiceNumber: { startsWith: prefix } },
+                orderBy: [{ createdAt: "desc" }],
+                select: { invoiceNumber: true },
+            });
+            const lastSeq = (() => {
+                const raw = latest?.invoiceNumber || "";
+                const parts = raw.split("/");
+                const tail = parts[2] || "00000";
+                const n = parseInt(tail, 10);
+                return Number.isFinite(n) ? n : 0;
+            })();
+            const nextSeq = String(lastSeq + 1).padStart(5, "0");
+            const nextInvoiceNumber = `${prefix}/${nextSeq}`;
+            res.json({ invoiceNumber: nextInvoiceNumber });
+            return;
+        }
+        catch (e) {
+            res.json({ invoiceNumber: `${prefix}/00001` });
+            return;
+        }
+    }
+    catch (error) {
+        logger_1.logger.error("Error computing next invoice number:", error);
+        res.status(500).json({ error: "Failed to compute next invoice number" });
+    }
+};
+exports.getNextInvoiceNumber = getNextInvoiceNumber;
 // Get billings by shop ID
 const getBillings = async (req, res) => {
     try {

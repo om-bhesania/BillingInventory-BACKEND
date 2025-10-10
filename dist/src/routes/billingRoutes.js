@@ -252,6 +252,8 @@ billingRoutes.use(auth_1.authenticateToken);
  *         description: Internal server error
  */
 billingRoutes.post("/", billingController_1.createBilling);
+// Get next invoice number
+billingRoutes.get("/next-invoice-number", billingController_1.getNextInvoiceNumber);
 /**
  * @swagger
  * /api/billing/{shopId}:

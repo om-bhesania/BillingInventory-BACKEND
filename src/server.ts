@@ -1,13 +1,16 @@
- 
 import app from "./app";
 import { logger } from "./utils/logger";
-import { printStartupBanner, printEnvironmentInfo, printRoutesInfo } from "./utils/startupBanner";
-import { createServer } from 'http';
-import { getSocketService } from './services/socketService';
-import { initializeDashboardWebSocket } from './services/dashboardWebSocketService';
+import {
+  printStartupBanner,
+  printEnvironmentInfo,
+  printRoutesInfo,
+} from "./utils/startupBanner";
+import { createServer } from "http";
+import { getSocketService } from "./services/socketService";
+import { initializeDashboardWebSocket } from "./services/dashboardWebSocketService";
 
-const PORT:number = Number(process.env.PORT) || 5000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const PORT: number = Number(process.env.PORT) || 5000;
+const NODE_ENV = process.env.NODE_ENV || "development";
 
 // Print startup banner
 printStartupBanner();
@@ -24,8 +27,7 @@ const socketService = getSocketService();
 socketService.initialize(server);
 
 // Initialize Dashboard WebSocket service
-const dashboardWebSocketService = initializeDashboardWebSocket(server);
-
+initializeDashboardWebSocket(server);
 server.listen(PORT, () => {
   logger.server.ready(PORT);
   printRoutesInfo(PORT);
@@ -34,13 +36,13 @@ server.listen(PORT, () => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.server.shutdown('SIGTERM received');
+process.on("SIGTERM", () => {
+  logger.server.shutdown("SIGTERM received");
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
-  logger.server.shutdown('SIGINT received');
+process.on("SIGINT", () => {
+  logger.server.shutdown("SIGINT received");
   process.exit(0);
 });
 

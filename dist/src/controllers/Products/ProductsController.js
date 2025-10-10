@@ -7,6 +7,7 @@ const NotificationsController_1 = require("../NotificationsController");
 const audit_1 = require("../../utils/audit");
 const socketService_1 = require("../../services/socketService");
 const roles_1 = require("../../config/roles");
+const packagingTypeController_1 = require("../packagingTypeController");
 const createProduct = async (req, res) => {
     try {
         const { sku, name, description, categoryId, packagingTypeId, quantityInLiters, unitSize, unitMeasurement, unitPrice, costPrice, retailPrice, totalStock, minStockLevel, barcode, imageUrl, flavorId, } = req.body;
@@ -22,7 +23,9 @@ const createProduct = async (req, res) => {
         });
         // If packagingTypeId provided, validate exists
         if (packagingTypeId) {
-            const pkg = await client_1.prisma.packagingType.findUnique({ where: { id: packagingTypeId } });
+            const pkg = await client_1.prisma.packagingType.findUnique({
+                where: { id: packagingTypeId },
+            });
             if (!pkg) {
                 return res.status(400).json({ error: "Invalid packaging type ID" });
             }
@@ -59,16 +62,20 @@ const createProduct = async (req, res) => {
             include: {
                 category: true,
                 flavor: true,
+                packagingType: true,
             },
         });
-        logger_1.logger.controller.create("Product", { name: product.name, sku: product.sku });
+        logger_1.logger.controller.create("Product", {
+            name: product.name,
+            sku: product.sku,
+        });
         await (0, audit_1.logActivity)({
             type: "product",
             action: "created",
             entity: "Product",
             entityId: product.id,
             userId: req.user?.publicId,
-            metadata: { name: product.name, sku: product.sku }
+            metadata: { name: product.name, sku: product.sku },
         });
         try {
             const userId = req.user?.publicId;
@@ -80,9 +87,13 @@ const createProduct = async (req, res) => {
                         message: `Created product ${product.name}`,
                     },
                 });
-                await (0, NotificationsController_1.emitUserNotification)(userId.toString(), { event: "created", notification: created });
+                await (0, NotificationsController_1.emitUserNotification)(userId.toString(), {
+                    event: "created",
+                    notification: created,
+                });
                 // Low stock notification on create
-                if (product.minStockLevel != null && product.totalStock <= product.minStockLevel) {
+                if (product.minStockLevel != null &&
+                    product.totalStock <= product.minStockLevel) {
                     const low = await client_1.prisma.notification.create({
                         data: {
                             userId,
@@ -90,7 +101,10 @@ const createProduct = async (req, res) => {
                             message: `${product.name} is at or below minimum stock`,
                         },
                     });
-                    await (0, NotificationsController_1.emitUserNotification)(userId.toString(), { event: "created", notification: low });
+                    await (0, NotificationsController_1.emitUserNotification)(userId.toString(), {
+                        event: "created",
+                        notification: low,
+                    });
                 }
             }
         }
@@ -109,6 +123,7 @@ const createProduct = async (req, res) => {
 };
 exports.createProduct = createProduct;
 const getProducts = async (req, res) => {
+    const packagingTypeId = req.query.packagingTypeId;
     try {
         const userId = req.user?.publicId;
         if (!userId) {
@@ -118,7 +133,7 @@ const getProducts = async (req, res) => {
         const user = await client_1.prisma.user.findUnique({
             where: { publicId: userId },
             include: {
-                Role: true
+                Role: true,
             },
         });
         if (!user) {
@@ -142,16 +157,21 @@ const getProducts = async (req, res) => {
             include: {
                 category: true,
                 flavor: true,
+                packagingType: true,
             },
             orderBy: {
                 name: "asc",
             },
         });
-        res.json(products);
+        return res.json(products);
     }
     catch (error) {
         logger_1.logger.error("Error fetching products:", error);
-        res.status(500).json({ error: "Failed to fetch products" });
+        if (!res.headersSent) {
+            return res.status(500).json({ error: "Failed to fetch products" });
+        }
+        // If headers are already sent, just end the function
+        return;
     }
 };
 exports.getProducts = getProducts;
@@ -166,7 +186,7 @@ const getProductById = async (req, res) => {
         const user = await client_1.prisma.user.findUnique({
             where: { publicId: userId },
             include: {
-                Role: true
+                Role: true,
             },
         });
         if (!user) {
@@ -177,6 +197,7 @@ const getProductById = async (req, res) => {
             include: {
                 category: true,
                 flavor: true,
+                packagingType: true,
                 restockRequests: true,
             },
         });
@@ -200,6 +221,7 @@ const getProductBySku = async (req, res) => {
             include: {
                 category: true,
                 flavor: true,
+                packagingType: true,
             },
         });
         if (!product) {
@@ -216,11 +238,13 @@ exports.getProductBySku = getProductBySku;
 const updateProduct = async (req, res) => {
     try {
         const { id } = req.params;
-        const { sku, name, description, categoryId, packagingTypeId, quantityInLiters, unitSize, unitMeasurement, unitPrice, costPrice, retailPrice, totalStock, minStockLevel, barcode, imageUrl, flavorId, isActive, } = req.body;
+        const { sku, name, description, categoryId, packagingTypeId, packagingType, quantityInLiters, unitSize, unitMeasurement, unitPrice, costPrice, retailPrice, totalStock, minStockLevel, barcode, imageUrl, flavorId, isActive, } = req.body;
         // Check if product exists
         const existingProduct = await client_1.prisma.product.findUnique({
             where: { id },
         });
+        const getPackagingTypesList = await (0, packagingTypeController_1.getPackagingTypes)({ query: {}, user: req.user }, {});
+        console.log("Packaging Types List:", getPackagingTypesList);
         if (!existingProduct) {
             return res.status(404).json({ error: "Product not found" });
         }
@@ -240,7 +264,9 @@ const updateProduct = async (req, res) => {
             });
             // If packagingTypeId is provided, validate exists
             if (req.body.packagingTypeId) {
-                const pkg = await client_1.prisma.packagingType.findUnique({ where: { id: req.body.packagingTypeId } });
+                const pkg = await client_1.prisma.packagingType.findUnique({
+                    where: { id: req.body.packagingTypeId },
+                });
                 if (!pkg) {
                     return res.status(400).json({ error: "Invalid packaging type ID" });
                 }
@@ -281,6 +307,7 @@ const updateProduct = async (req, res) => {
             include: {
                 category: true,
                 flavor: true,
+                packagingType: true,
             },
         });
         logger_1.logger.controller.update("Product", product.id, { name: product.name });
@@ -290,7 +317,7 @@ const updateProduct = async (req, res) => {
             entity: "Product",
             entityId: product.id,
             userId: req.user?.publicId,
-            metadata: { name: product.name }
+            metadata: { name: product.name },
         });
         try {
             const userId = req.user?.publicId;
@@ -302,8 +329,12 @@ const updateProduct = async (req, res) => {
                         message: `Updated product ${product.name}`,
                     },
                 });
-                await (0, NotificationsController_1.emitUserNotification)(userId.toString(), { event: "created", notification: updated });
-                if (product.minStockLevel != null && product.totalStock <= product.minStockLevel) {
+                await (0, NotificationsController_1.emitUserNotification)(userId.toString(), {
+                    event: "created",
+                    notification: updated,
+                });
+                if (product.minStockLevel != null &&
+                    product.totalStock <= product.minStockLevel) {
                     const low = await client_1.prisma.notification.create({
                         data: {
                             userId,
@@ -311,7 +342,10 @@ const updateProduct = async (req, res) => {
                             message: `${product.name} is at or below minimum stock`,
                         },
                     });
-                    await (0, NotificationsController_1.emitUserNotification)(userId.toString(), { event: "created", notification: low });
+                    await (0, NotificationsController_1.emitUserNotification)(userId.toString(), {
+                        event: "created",
+                        notification: low,
+                    });
                 }
             }
         }
@@ -339,23 +373,25 @@ const updateProductStock = async (req, res) => {
         // Get current product data before update
         const currentProduct = await client_1.prisma.product.findUnique({
             where: { id },
-            select: { id: true, name: true, totalStock: true }
+            select: { id: true, name: true, totalStock: true },
         });
         if (!currentProduct) {
             return res.status(404).json({ error: "Product not found" });
         }
         const stockChange = totalStock - currentProduct.totalStock;
         // Use the helper function for consistent stock updates with notifications
-        const updatedProduct = await (0, exports.updateFactoryStockWithNotifications)(id, stockChange, 'manual_stock_update', {
+        const updatedProduct = await (0, exports.updateFactoryStockWithNotifications)(id, stockChange, "manual_stock_update", {
             updatedBy: req.user?.publicId,
-            updateType: 'direct_stock_set'
+            updateType: "direct_stock_set",
         });
         res.json(updatedProduct);
     }
     catch (error) {
         logger_1.logger.error("Error updating product stock:", error);
         res.status(500).json({
-            error: error instanceof Error ? error.message : "Failed to update product stock"
+            error: error instanceof Error
+                ? error.message
+                : "Failed to update product stock",
         });
     }
 };
@@ -481,7 +517,7 @@ const getTotalRevenue = async (req, res) => {
         const user = await client_1.prisma.user.findUnique({
             where: { publicId: userId },
             include: {
-                Role: true
+                Role: true,
             },
         });
         if (!user) {
@@ -489,13 +525,15 @@ const getTotalRevenue = async (req, res) => {
         }
         // Only Admin can access total revenue
         if (!user.Role || !(0, roles_1.isAdmin)(user.Role.name)) {
-            return res.status(403).json({ error: "Access denied: Admin role required" });
+            return res
+                .status(403)
+                .json({ error: "Access denied: Admin role required" });
         }
         // Get all shop billings (exclude factory billings)
         const billings = await client_1.prisma.billing.findMany({
             where: {
                 invoiceType: "SHOP", // Only shop billings count as revenue
-                shopId: { not: null } // Ensure it's a shop billing
+                shopId: { not: null }, // Ensure it's a shop billing
             },
             select: {
                 total: true,
@@ -503,10 +541,10 @@ const getTotalRevenue = async (req, res) => {
                 shopId: true,
                 shop: {
                     select: {
-                        name: true
-                    }
-                }
-            }
+                        name: true,
+                    },
+                },
+            },
         });
         // Calculate total revenue
         const totalRevenue = billings.reduce((sum, billing) => sum + (billing.total || 0), 0);
@@ -524,7 +562,7 @@ const getTotalRevenue = async (req, res) => {
         }
         // Get revenue by shop
         const revenueByShop = billings.reduce((acc, billing) => {
-            const shopName = billing.shop?.name || 'Unknown Shop';
+            const shopName = billing.shop?.name || "Unknown Shop";
             if (!acc[shopName]) {
                 acc[shopName] = 0;
             }
@@ -536,7 +574,7 @@ const getTotalRevenue = async (req, res) => {
             totalProfit,
             totalBills: billings.length,
             revenueByShop,
-            lastUpdated: new Date().toISOString()
+            lastUpdated: new Date().toISOString(),
         });
     }
     catch (error) {
@@ -556,7 +594,7 @@ const getTotalItemsWorth = async (req, res) => {
         const user = await client_1.prisma.user.findUnique({
             where: { publicId: userId },
             include: {
-                Role: true
+                Role: true,
             },
         });
         if (!user) {
@@ -564,45 +602,48 @@ const getTotalItemsWorth = async (req, res) => {
         }
         // Only Admin can access total items worth
         if (!user.Role || !(0, roles_1.isAdmin)(user.Role.name)) {
-            return res.status(403).json({ error: "Access denied: Admin role required" });
+            return res
+                .status(403)
+                .json({ error: "Access denied: Admin role required" });
         }
         // Get all fulfilled restock requests
         const restockRequests = await client_1.prisma.restockRequest.findMany({
             where: {
-                status: "fulfilled"
+                status: "fulfilled",
             },
             include: {
                 product: {
                     select: {
                         name: true,
-                        unitPrice: true
-                    }
+                        unitPrice: true,
+                    },
                 },
                 shop: {
                     select: {
-                        name: true
-                    }
-                }
-            }
+                        name: true,
+                    },
+                },
+            },
         });
         // Calculate total items worth
         const totalItemsWorth = restockRequests.reduce((sum, request) => {
-            return sum + (request.requestedAmount * (request.product.unitPrice || 0));
+            return sum + request.requestedAmount * (request.product.unitPrice || 0);
         }, 0);
         // Get items worth by shop
         const itemsWorthByShop = restockRequests.reduce((acc, request) => {
-            const shopName = request.shop?.name || 'Unknown Shop';
+            const shopName = request.shop?.name || "Unknown Shop";
             if (!acc[shopName]) {
                 acc[shopName] = 0;
             }
-            acc[shopName] += request.requestedAmount * (request.product.unitPrice || 0);
+            acc[shopName] +=
+                request.requestedAmount * (request.product.unitPrice || 0);
             return acc;
         }, {});
         res.json({
             totalItemsWorth,
             totalRequests: restockRequests.length,
             itemsWorthByShop,
-            lastUpdated: new Date().toISOString()
+            lastUpdated: new Date().toISOString(),
         });
     }
     catch (error) {
@@ -617,7 +658,7 @@ const updateFactoryStockWithNotifications = async (productId, stockChange, reaso
         // Get current product data including minStockLevel
         const currentProduct = await client_1.prisma.product.findUnique({
             where: { id: productId },
-            select: { id: true, name: true, totalStock: true, minStockLevel: true }
+            select: { id: true, name: true, totalStock: true, minStockLevel: true },
         });
         if (!currentProduct) {
             throw new Error("Product not found");
@@ -639,27 +680,28 @@ const updateFactoryStockWithNotifications = async (productId, stockChange, reaso
         // Emit WebSocket updates
         const socketService = (0, socketService_1.getSocketService)();
         socketService.broadcastFactoryStockUpdate({
-            event: 'factory_stock:update',
+            event: "factory_stock:update",
             productId: updatedProduct.id,
             productName: updatedProduct.name,
-            action: stockChange > 0 ? 'stock_added' : 'stock_deducted',
+            action: stockChange > 0 ? "stock_added" : "stock_deducted",
             stockChange: Math.abs(stockChange),
             previousStock,
             newStock,
             reason,
             metadata,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
         });
         // Check for low stock alert after stock update
-        if (currentProduct.minStockLevel != null && newStock <= currentProduct.minStockLevel) {
+        if (currentProduct.minStockLevel != null &&
+            newStock <= currentProduct.minStockLevel) {
             // Get all admin users to notify them about low stock
             const adminUsers = await client_1.prisma.user.findMany({
                 where: {
-                    role: "Admin"
+                    role: "Admin",
                 },
                 select: {
-                    publicId: true
-                }
+                    publicId: true,
+                },
             });
             // Create low stock notifications for all admin users
             for (const adminUser of adminUsers) {
@@ -673,15 +715,15 @@ const updateFactoryStockWithNotifications = async (productId, stockChange, reaso
                 // Emit real-time notification
                 await (0, NotificationsController_1.emitUserNotification)(adminUser.publicId, {
                     event: "low_stock_alert",
-                    notification: lowStockNotification
+                    notification: lowStockNotification,
                 });
             }
             // Emit WebSocket low stock alert to all connected clients
             const socketService = (0, socketService_1.getSocketService)();
-            socketService.emitToAll('factory_low_stock_alert', {
-                event: 'factory_low_stock_alert',
+            socketService.emitToAll("factory_low_stock_alert", {
+                event: "factory_low_stock_alert",
                 notification: {
-                    type: 'CRITICAL',
+                    type: "CRITICAL",
                     message: `🚨 Factory low stock alert: ${updatedProduct.name} has only ${newStock} units remaining (min: ${currentProduct.minStockLevel})`,
                     timestamp: new Date().toISOString(),
                     data: {
@@ -691,9 +733,9 @@ const updateFactoryStockWithNotifications = async (productId, stockChange, reaso
                         minStockLevel: currentProduct.minStockLevel,
                         previousStock,
                         stockChange,
-                        reason
-                    }
-                }
+                        reason,
+                    },
+                },
             });
         }
         // Log the activity
@@ -708,10 +750,10 @@ const updateFactoryStockWithNotifications = async (productId, stockChange, reaso
                 newStock,
                 stockChange,
                 reason,
-                ...metadata
+                ...metadata,
             },
-            message: `Factory stock ${stockChange > 0 ? 'added' : 'deducted'} for ${updatedProduct.name}`,
-            status: "success"
+            message: `Factory stock ${stockChange > 0 ? "added" : "deducted"} for ${updatedProduct.name}`,
+            status: "success",
         });
         return updatedProduct;
     }
