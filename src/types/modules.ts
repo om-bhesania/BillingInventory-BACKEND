@@ -13,7 +13,9 @@ export type ModuleName =
   | "Search"
   | "Database Monitoring"
   | "Cache Management"
-  | "Support";
+  | "Support"
+  | "Raw Materials"
+  | "Suppliers";
 
 export type ActionType = "read" | "write" | "update" | "delete";
 
@@ -33,6 +35,8 @@ export const SYSTEM_MODULES: ModuleName[] = [
   "Database Monitoring",
   "Cache Management",
   "Support",
+  "Raw Materials",
+  "Suppliers",
 ];
 
 export const SUPER_ADMIN_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
@@ -51,6 +55,8 @@ export const SUPER_ADMIN_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = 
   "Database Monitoring": ["read", "write", "update", "delete"],
   "Cache Management": ["read", "write", "update", "delete"],
   Support: ["read", "write", "update", "delete"],
+  "Raw Materials": ["read", "write", "update", "delete"],
+  Suppliers: ["read", "write", "update", "delete"],
 };
 
 export const ADMIN_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
@@ -69,6 +75,8 @@ export const ADMIN_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
   "Database Monitoring": [],
   "Cache Management": [],
   Support: ["read", "write", "update", "delete"],
+  "Raw Materials": ["read", "write", "update", "delete"],
+  Suppliers: ["read", "write", "update", "delete"],
 };
 
 export const SHOP_OWNER_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
@@ -87,6 +95,8 @@ export const SHOP_OWNER_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
   "Database Monitoring": [],
   "Cache Management": [],
   Support: [],
+  "Raw Materials": ["read", "write", "update", "delete"],
+  Suppliers: [],
 };
 
 export const Factory_Employee_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
@@ -105,6 +115,8 @@ export const Factory_Employee_MODULE_PERMISSIONS: Record<ModuleName, ActionType[
   "Database Monitoring": [],
   "Cache Management": [],
   Support: [],
+  "Raw Materials": [],
+  Suppliers: [],
 };
 
 export const Outlet_Employee_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]> = {
@@ -123,6 +135,8 @@ export const Outlet_Employee_MODULE_PERMISSIONS: Record<ModuleName, ActionType[]
   "Database Monitoring": [],
   "Cache Management": [],
   Support: [],
+  "Raw Materials": [],
+  Suppliers: [],
 };
 
 export const DEFAULT_PERMISSIONS: any = {

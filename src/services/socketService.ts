@@ -31,6 +31,9 @@ interface SocketService {
   broadcastSystemHealth(data: any): void;
   broadcastNewChatRequest(chatRequest: any): void;
   broadcastFactoryStockUpdate(data: any): void;
+  // Raw Material specific methods
+  broadcastRawMaterialLowStockAlert(data: any): void;
+  broadcastRawMaterialInventoryUpdate(data: any): void;
 }
 
 class SocketServiceImpl implements SocketService {
@@ -758,6 +761,38 @@ class SocketServiceImpl implements SocketService {
         data: { shopId, ...data }
       }
     });
+  }
+
+  // Raw Material specific alerts
+  broadcastRawMaterialLowStockAlert(data: any): void {
+    // Emit to admin room for raw material alerts
+    this.emitToRole('Admin', 'raw_material:low_stock', data);
+    
+    // If it's shop-specific, also emit to that shop
+    if (data.shopId) {
+      this.emitToRoom(`shop:${data.shopId}`, 'raw_material:low_stock', data);
+    }
+
+    // Also emit as notification
+    this.emitToRole('Admin', 'notification:new', {
+      event: 'raw_material_low_stock',
+      notification: {
+        type: 'RAW_MATERIAL_LOW_STOCK',
+        message: `${data.materialName} is running low (${data.currentStock} ${data.unit})`,
+        timestamp: new Date().toISOString(),
+        data
+      }
+    });
+  }
+
+  broadcastRawMaterialInventoryUpdate(data: any): void {
+    // Emit to admin room
+    this.emitToRole('Admin', 'raw_material:inventory_update', data);
+
+    // If it's shop-specific, also emit to that shop
+    if (data.shopId) {
+      this.emitToRoom(`shop:${data.shopId}`, 'raw_material:inventory_update', data);
+    }
   }
 
   broadcastSystemHealth(data: any): void {

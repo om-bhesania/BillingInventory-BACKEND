@@ -21,7 +21,8 @@ export const ROLES: Role[] = [
       "Billing", 
       "Shop",
       "Home",
-      "Employee"
+      "Employee",
+      "Raw Materials"
     ]
   },
   {
@@ -31,7 +32,8 @@ export const ROLES: Role[] = [
     permissions: [
       "Billing",
       "Shop Inventory",
-      "Home"
+      "Home",
+      "Raw Materials"
     ]
   }
 ];

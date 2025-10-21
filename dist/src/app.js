@@ -37,6 +37,7 @@ const paymentRoutes_1 = __importDefault(require("./routes/paymentRoutes"));
 const stockAdjustmentRoutes_1 = __importDefault(require("./routes/stockAdjustmentRoutes"));
 const enhancedDashboardRoutes_1 = __importDefault(require("./routes/enhancedDashboardRoutes"));
 const swaggerConfig_1 = __importDefault(require("./swaggerConfig"));
+const apiKeyMiddleware_1 = __importDefault(require("./middlewares/apiKeyMiddleware"));
 // Load environment variables
 dotenv_1.default.config();
 // Initialize app
@@ -56,15 +57,6 @@ const corsOptions = {
             "https://shreefood.co.in",
             "https://www.shreefood.co.in",
             "https://www.api.shreefood.co.in",
-            // Add common frontend domains
-            "https://bliss-frontend.onrender.com",
-            "https://bliss-client.onrender.com",
-            "https://bliss-app.onrender.com",
-            "https://bliss-frontend.vercel.app",
-            "https://bliss-client.vercel.app",
-            "https://bliss-app.vercel.app",
-            "https://s3l06km6-5173.inc1.devtunnels.ms/",
-            // Add any other frontend domains you're using
         ];
         // Log CORS requests for debugging
         console.log(`[CORS] Request from origin: ${origin}`);
@@ -82,9 +74,14 @@ const corsOptions = {
         return callback(null, false);
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-    optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Accept",
+    ],
+    optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
 };
 // Middlewares
 app.use((0, cors_1.default)(corsOptions));
@@ -130,9 +127,10 @@ app.get("/cors-test", (req, res) => {
         message: "CORS test successful",
         origin: req.headers.origin,
         timestamp: new Date().toISOString(),
-        cors: "working"
+        cors: "working",
     });
 });
+const apiMiddleware = apiKeyMiddleware_1.default;
 // Routes
 app.use("/api/auth", authRoutes_1.authRoutes);
 app.use("/api/roles", roleRoutes_1.default);

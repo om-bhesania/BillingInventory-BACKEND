@@ -1,7 +1,13 @@
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
-import express, { Application, NextFunction, Request, Response } from "express";
+import express, {
+  Application,
+  NextFunction,
+  Request,
+  RequestHandler,
+  Response,
+} from "express";
 
 import swaggerUi from "swagger-ui-express";
 import { errorHandler } from "./middlewares/ErrorHandlers/errorHandlers";
@@ -32,7 +38,12 @@ import chatRequestRoutes from "./routes/chatRequestRoutes";
 import paymentRoutes from "./routes/paymentRoutes";
 import stockAdjustmentRoutes from "./routes/stockAdjustmentRoutes";
 import enhancedDashboardRoutes from "./routes/enhancedDashboardRoutes";
+import rawMaterialCategoryRoutes from "./routes/rawMaterialCategoryRoutes";
+import supplierRoutes from "./routes/supplierRoutes";
+import rawMaterialRoutes from "./routes/rawMaterialRoutes";
+import rawMaterialInventoryRoutes from "./routes/rawMaterialInventoryRoutes";
 import swaggerSpecs from "./swaggerConfig";
+import apiKeyMiddleware from "./middlewares/apiKeyMiddleware";
 
 // Load environment variables
 dotenv.config();
@@ -42,7 +53,10 @@ const app: Application = express();
 
 // CORS Configuration
 const corsOptions = {
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+  origin: (
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void
+  ) => {
     const allowed = [
       process.env.FRONTEND_ORIGIN || "http://localhost:5173",
       "http://localhost:8080",
@@ -55,39 +69,37 @@ const corsOptions = {
       "https://shreefood.co.in",
       "https://www.shreefood.co.in",
       "https://www.api.shreefood.co.in",
-      // Add common frontend domains
-      "https://bliss-frontend.onrender.com",
-      "https://bliss-client.onrender.com",
-      "https://bliss-app.onrender.com",
-      "https://bliss-frontend.vercel.app",
-      "https://bliss-client.vercel.app",
-      "https://bliss-app.vercel.app",
-      "https://s3l06km6-5173.inc1.devtunnels.ms/",
-      // Add any other frontend domains you're using
+      "https://backend.shreefood.co.in",
+      "https://www.backend.shreefood.co.in",
     ];
-    
+
     // Log CORS requests for debugging
     console.log(`[CORS] Request from origin: ${origin}`);
-    
+
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) {
       console.log(`[CORS] ✅ No origin - allowing request`);
       return callback(null, true);
     }
-    
+
     if (allowed.includes(origin)) {
       console.log(`[CORS] ✅ Allowed origin: ${origin}`);
       return callback(null, true);
     }
-    
+
     console.log(`[CORS] ❌ Blocked origin: ${origin}`);
     console.log(`[CORS] Allowed origins:`, allowed);
     return callback(null, false);
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+  ],
+  optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
 };
 
 // Middlewares
@@ -139,9 +151,10 @@ app.get("/cors-test", (req: Request, res: Response) => {
     message: "CORS test successful",
     origin: req.headers.origin,
     timestamp: new Date().toISOString(),
-    cors: "working"
+    cors: "working",
   });
 });
+const apiMiddleware = apiKeyMiddleware as RequestHandler;
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -170,6 +183,10 @@ app.use("/api/database", databaseRoutes);
 app.use("/api/cache", cacheRoutes);
 app.use("/api/holidays", holidayRoutes);
 app.use("/api/enhanced-dashboard", enhancedDashboardRoutes);
+app.use("/api/raw-material-categories", rawMaterialCategoryRoutes);
+app.use("/api/suppliers", supplierRoutes);
+app.use("/api/raw-materials", rawMaterialRoutes);
+app.use("/api/raw-material-inventory", rawMaterialInventoryRoutes);
 app.use("/api/ping", pingRouter);
 // Global Error Handler
 app.use(errorHandler);
